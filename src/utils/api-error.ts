@@ -1,3 +1,5 @@
+import { HTTP_STATUS } from "../config/constants";
+
 export type FieldErrors = Record<string, string>;
 
 export class ApiError extends Error {
@@ -12,18 +14,23 @@ export class ApiError extends Error {
   }
 
   static unauthorized(message = "กรุณาเข้าสู่ระบบ") {
-    return new ApiError(401, "UNAUTHORIZED", message);
+    return new ApiError(HTTP_STATUS.UNAUTHORIZED, "UNAUTHORIZED", message);
   }
   static forbidden(message = "ไม่มีสิทธิ์ใช้งานส่วนนี้") {
-    return new ApiError(403, "FORBIDDEN", message);
+    return new ApiError(HTTP_STATUS.FORBIDDEN, "FORBIDDEN", message);
   }
   static notFound(message = "ไม่พบข้อมูล", code = "NOT_FOUND") {
-    return new ApiError(404, code, message);
+    return new ApiError(HTTP_STATUS.NOT_FOUND, code, message);
   }
   static conflict(code: string, message: string, fields?: FieldErrors) {
-    return new ApiError(409, code, message, fields);
+    return new ApiError(HTTP_STATUS.CONFLICT, code, message, fields);
   }
   static validation(fields: FieldErrors, message = "ข้อมูลไม่ถูกต้อง") {
-    return new ApiError(422, "VALIDATION_ERROR", message, fields);
+    return new ApiError(
+      HTTP_STATUS.UNPROCESSABLE_ENTITY,
+      "VALIDATION_ERROR",
+      message,
+      fields,
+    );
   }
 }

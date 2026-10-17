@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Running Event API",
-    "description": "Postman collection ของ Running Event API. Admin ใช้ JWT ใน httpOnly cookie (rr_admin_token) ที่ตั้งโดย Login อัตโนมัติผ่าน cookie jar ของ Postman. Response ทุกอัน: { data, meta? }",
+    "description": "Postman collection ของ Running Event API. Admin ใช้ JWT ใน httpOnly cookie (rr_admin_token) ที่ตั้งโดย Login อัตโนมัติผ่าน cookie jar ของ Postman. Response JSON ทุกอันมี envelope: { statusCode, success, message, data, meta? } (error: { statusCode, success:false, message, error:{code,message,fields?} }) ยกเว้น CSV/ไฟล์สลิป/304",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -39,6 +39,18 @@
     },
     {
       "key": "targetUserId",
+      "value": ""
+    },
+    {
+      "key": "viewerEmail",
+      "value": "viewer@example.com"
+    },
+    {
+      "key": "viewerPassword",
+      "value": ""
+    },
+    {
+      "key": "viewerCookie",
       "value": ""
     }
   ],
@@ -121,7 +133,8 @@
                   "const d=pm.response.json().data||{};",
                   "if(d.id) pm.collectionVariables.set('userId',d.id);",
                   "if(d.role) pm.collectionVariables.set('role',d.role);",
-                  "pm.test('cookie rr_admin_token set',()=>pm.expect(pm.cookies.has('rr_admin_token')).to.be.true);"
+                  "pm.test('cookie rr_admin_token set',()=>pm.expect(pm.cookies.has('rr_admin_token')).to.be.true);",
+                  "pm.test(\"body.data holds the user\",()=>pm.expect(pm.response.json().data).to.include.keys(\"id\",\"email\",\"role\"));"
                 ]
               }
             }
@@ -167,7 +180,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "const u=pm.response.json().data;",
+                  "pm.test(\"user keys unchanged under data\",()=>pm.expect(u).to.include.keys(\"id\",\"name\",\"email\",\"role\",\"active\",\"createdAt\",\"updatedAt\"));"
                 ]
               }
             }
@@ -547,7 +562,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.collectionVariables.set('eventSlug','demo-run-'+Date.now());"
+                  "pm.collectionVariables.set('eventSlug','demo-run-'+Date.now());",
+                  "pm.test(\"Location header\",()=>pm.expect(pm.response.headers.get(\"Location\")).to.match(/\\/api\\/v1\\/admin\\/events\\/[a-f0-9]{24}$/));"
                 ]
               }
             },
@@ -686,7 +702,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "pm.test(\"pagination meta sibling of data\",()=>pm.expect(pm.response.json().meta).to.have.keys(\"page\",\"pageSize\",\"total\",\"totalPages\"));"
                 ]
               }
             }
@@ -1685,6 +1702,490 @@
       ]
     },
     {
+      "name": "Negative cases",
+      "description": "ตรวจ status code และ envelope ของกรณีผิดพลาด รันหลัง Login และหลัง Create Event (ก่อนกลุ่ม Auth - Run Last)",
+      "item": [
+        {
+          "name": "401 invalid session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\",()=>pm.response.to.have.status(401));",
+                  "pm.test(\"error.code UNAUTHORIZED\",()=>pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHORIZED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "rr_admin_token=invalid"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "ส่ง cookie ที่ไม่ถูกต้อง"
+          }
+        },
+        {
+          "name": "403 bad Origin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\",()=>pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\",()=>pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Origin",
+                "value": "http://evil.test"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events"
+              ]
+            },
+            "description": "Origin ไม่อยู่ใน CORS_ORIGINS"
+          }
+        },
+        {
+          "name": "403 wrong role (viewer)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const pw=pm.collectionVariables.get('viewerPassword'); if(!pw) return;",
+                  "pm.sendRequest({url:pm.collectionVariables.get('baseUrl')+'/api/v1/admin/auth/login',method:'POST',header:{'Content-Type':'application/json'},body:{mode:'raw',raw:JSON.stringify({email:pm.collectionVariables.get('viewerEmail'),password:pw})}},(e,r)=>{ if(e||!r) return; const sc=r.headers.get('Set-Cookie')||''; pm.collectionVariables.set('viewerCookie',sc.split(';')[0]); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(!pm.collectionVariables.get('viewerPassword')) return pm.test.skip('set viewerPassword to run');",
+                  "pm.test(\"status 403\",()=>pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\",()=>pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Cookie",
+                "value": "{{viewerCookie}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events"
+              ]
+            },
+            "description": "ตั้ง collection variable viewerEmail/viewerPassword (ผู้ใช้ role viewer) ก่อนรัน ถ้าไม่ตั้งจะข้าม"
+          }
+        },
+        {
+          "name": "404 unknown id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\",()=>pm.response.to.have.status(404));",
+                  "pm.test(\"error.code EVENT_NOT_FOUND\",()=>pm.expect(pm.response.json().error.code).to.eql(\"EVENT_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/000000000000000000000000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "000000000000000000000000"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "400 invalid ObjectId",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\",()=>pm.response.to.have.status(400));",
+                  "pm.test(\"error.code INVALID_PARAM\",()=>pm.expect(pm.response.json().error.code).to.eql(\"INVALID_PARAM\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/not-an-id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "not-an-id"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "404 unknown route",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\",()=>pm.response.to.have.status(404));",
+                  "pm.test(\"error.code NOT_FOUND\",()=>pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/does-not-exist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "does-not-exist"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "405 wrong method",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 405\",()=>pm.response.to.have.status(405));",
+                  "pm.test(\"error.code METHOD_NOT_ALLOWED\",()=>pm.expect(pm.response.json().error.code).to.eql(\"METHOD_NOT_ALLOWED\"));",
+                  "pm.test(\"Allow header\",()=>pm.expect(pm.response.headers.get(\"Allow\")).to.include(\"GET\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public",
+                "events"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "400 malformed JSON",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\",()=>pm.response.to.have.status(400));",
+                  "pm.test(\"error.code INVALID_JSON\",()=>pm.expect(pm.response.json().error.code).to.eql(\"INVALID_JSON\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "415 wrong Content-Type",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 415\",()=>pm.response.to.have.status(415));",
+                  "pm.test(\"error.code UNSUPPORTED_MEDIA_TYPE\",()=>pm.expect(pm.response.json().error.code).to.eql(\"UNSUPPORTED_MEDIA_TYPE\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "name=x",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "422 invalid body",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\",()=>pm.response.to.have.status(422));",
+                  "pm.test(\"error.code VALIDATION_ERROR\",()=>pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\"));",
+                  "pm.test(\"fields present\",()=>pm.expect(pm.response.json().error.fields).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "409 duplicate slug",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\",()=>pm.response.to.have.status(409));",
+                  "pm.test(\"error.code SLUG_TAKEN\",()=>pm.expect(pm.response.json().error.code).to.eql(\"SLUG_TAKEN\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bangkok Fun Run 2030\",\n  \"slug\": \"{{eventSlug}}\",\n  \"subtitle\": \"วิ่งสนุกกลางกรุง\",\n  \"description\": \"งานวิ่งตัวอย่างสำหรับทดสอบ\",\n  \"date\": \"2030-12-31\",\n  \"venue\": \"สวนลุมพินี\",\n  \"province\": \"กรุงเทพมหานคร\",\n  \"category\": \"fun\",\n  \"theme\": \"orange\",\n  \"status\": \"open\",\n  \"registrationEnds\": \"2030-12-01\",\n  \"organizer\": \"Running Club\",\n  \"refundPolicy\": \"ไม่คืนเงินทุกกรณี\",\n  \"races\": [\n    {\n      \"name\": \"5K\",\n      \"price\": 500,\n      \"quota\": 100,\n      \"start\": \"05:30\"\n    },\n    {\n      \"name\": \"10K\",\n      \"price\": 700,\n      \"quota\": 100,\n      \"start\": \"05:00\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events"
+              ]
+            },
+            "description": "สร้างงานซ้ำด้วย {{eventSlug}} เดิม (ต้องรัน Create Event ก่อน)"
+          }
+        }
+      ]
+    },
+    {
       "name": "Auth - Run Last",
       "description": "Change Password และ Logout ทำให้ session/รหัสผ่านเปลี่ยน ควรรันเป็นลำดับสุดท้าย",
       "item": [
@@ -1696,7 +2197,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"status 204\",()=>pm.response.to.have.status(204));"
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "pm.test(\"data is null\",()=>pm.expect(pm.response.json().data).to.eql(null));"
                 ]
               }
             }
@@ -1731,7 +2233,7 @@
                 "change-password"
               ]
             },
-            "description": "เปลี่ยนรหัสผ่าน (newPassword อย่างน้อย 10 ตัวอักษร) คืน 204. หลังเรียกให้แก้ adminPassword ใน environment"
+            "description": "เปลี่ยนรหัสผ่าน (newPassword อย่างน้อย 10 ตัวอักษร) คืน 204. หลังเรียกให้แก้ adminPassword ใน environment ตอบ 200 พร้อม envelope และ data: null"
           }
         },
         {
@@ -1742,7 +2244,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"status 204\",()=>pm.response.to.have.status(204));"
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "pm.test(\"data is null\",()=>pm.expect(pm.response.json().data).to.eql(null));"
                 ]
               }
             }
@@ -1763,10 +2266,27 @@
                 "logout"
               ]
             },
-            "description": "ล้าง cookie"
+            "description": "ล้าง cookie ตอบ 200 พร้อม envelope และ data: null"
           }
         }
       ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const ct = pm.response.headers.get('Content-Type') || '';",
+          "if (ct.includes('application/json') && pm.response.code !== 204 && pm.response.code !== 304) {",
+          "  const b = pm.response.json();",
+          "  pm.test('envelope: body.statusCode equals HTTP status', () => pm.expect(b.statusCode).to.eql(pm.response.code));",
+          "  pm.test('envelope: body.success matches 2xx', () => pm.expect(b.success).to.eql(pm.response.code >= 200 && pm.response.code < 300));",
+          "  pm.test('envelope: message is a string', () => pm.expect(b.message).to.be.a('string').and.not.empty);",
+          "}"
+        ]
+      }
     }
   ]
 }

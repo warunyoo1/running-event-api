@@ -16,6 +16,8 @@ import {
   requireAuth,
   requireRole,
 } from "../middlewares/auth";
+import { requireContentType } from "../middlewares/content-type";
+import { addMethodNotAllowed } from "../middlewares/method-not-allowed";
 import { originCheck } from "../middlewares/origin-check";
 import { loginLimiter } from "../middlewares/rate-limit";
 import { validate } from "../middlewares/validate";
@@ -27,6 +29,7 @@ import { createUserBody, updateUserBody } from "../validators/user.validator";
 
 export const adminRoutes = Router();
 adminRoutes.use(originCheck);
+adminRoutes.use(requireContentType("json")); // no admin route accepts multipart
 
 // --- auth ---
 adminRoutes.post(
@@ -183,3 +186,5 @@ adminRoutes.patch(
   validate({ params: objectIdParam, body: updateUserBody }),
   users.update,
 );
+
+addMethodNotAllowed(adminRoutes);

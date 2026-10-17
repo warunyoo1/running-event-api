@@ -1,3 +1,4 @@
+import { HTTP_STATUS } from "../config/constants";
 import { Order, Payment } from "../models";
 import { ApiError } from "../utils/api-error";
 import {
@@ -31,7 +32,7 @@ export async function submitSlip(
   const kind = detectImage(file.buffer);
   if (!kind)
     throw new ApiError(
-      415,
+      HTTP_STATUS.UNSUPPORTED_MEDIA_TYPE,
       "UNSUPPORTED_FILE_TYPE",
       "รองรับเฉพาะไฟล์ JPG, PNG หรือ WEBP",
     );

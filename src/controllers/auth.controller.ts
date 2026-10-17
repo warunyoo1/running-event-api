@@ -3,7 +3,7 @@ import { COOKIE_NAME } from "../config/constants";
 import { env } from "../config/env";
 import { validatedBody } from "../middlewares/validate";
 import * as authService from "../services/auth.service";
-import { ok } from "../utils/response";
+import { done, ok } from "../utils/response";
 import type {
   ChangePasswordBody,
   LoginBody,
@@ -25,7 +25,7 @@ export async function login(req: Request, res: Response) {
 
 export function logout(_req: Request, res: Response) {
   res.clearCookie(COOKIE_NAME, cookieOptions());
-  res.status(204).end();
+  done(res, "ออกจากระบบสำเร็จ");
 }
 
 export async function me(req: Request, res: Response) {
@@ -36,5 +36,5 @@ export async function changePassword(req: Request, res: Response) {
   const { currentPassword, newPassword } =
     validatedBody<ChangePasswordBody>(req);
   await authService.changePassword(req.user!.id, currentPassword, newPassword);
-  res.status(204).end();
+  done(res, "เปลี่ยนรหัสผ่านสำเร็จ");
 }

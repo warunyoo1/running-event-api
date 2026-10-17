@@ -16,9 +16,17 @@
 6. **Public - Orders > Upload Slip** ต้องเลือกไฟล์รูปในช่อง `slip` เอง
 7. **Admin - Orders > Resolve orderId from orderNo** เก็บ `orderId` แล้วใช้ Get / Approve / Reject / Cancel / Tracking ต่อได้
 8. กลุ่ม Admin อื่น (Slips, Participants, Shipping, Dashboard, Export CSV, Users)
-9. **Auth - Run Last** (Change Password, Logout) รันสุดท้ายเท่านั้น เพราะจะทำให้ session/รหัสผ่านเปลี่ยน
+9. **Negative cases** ตรวจ error status ต่าง ๆ
+10. **Auth - Run Last** (Change Password, Logout) รันสุดท้ายเท่านั้น เพราะจะทำให้ session/รหัสผ่านเปลี่ยน
 
 Variable ที่ต้องกำหนดเองถ้าจะใช้ request นั้น: `paymentId` (Get Slip File), `participantId` (Patch Participant) ดู id จาก response ของ List ที่เกี่ยวข้อง
+
+## Response envelope และ status code
+- Response JSON ทุกอันเป็น `{ statusCode, success, message, data, meta? }` (error: `{ statusCode, success:false, message, error:{ code, message, fields? } }`) ยกเว้น CSV, ไฟล์สลิป และ 304
+- Collection มี test ระดับ collection ตรวจทุก response JSON ว่า `body.statusCode` เท่ากับ HTTP status และ `body.success` ตรงกับ 2xx
+- Logout และ Change Password ตอบ **200** (`data: null`) ไม่ใช่ 204 อีกแล้ว
+- โฟลเดอร์ **Negative cases** ครอบคลุม 400, 401, 403, 404, 405, 409, 415, 422 (รันหลัง Create Event) เคส 403 role ผิดต้องตั้ง `viewerEmail`/`viewerPassword` ใน collection variables ไม่เช่นนั้นจะถูกข้าม
+- ตาราง status ทั้งหมดดูใน `README.md` หัวข้อ "HTTP status codes"
 
 ## Auth
 - Login สำเร็จแล้ว server ตั้ง cookie `rr_admin_token` (httpOnly, JWT) Postman เก็บใน cookie jar และแนบให้ทุก request อัตโนมัติ ไม่ใช้ Authorization header

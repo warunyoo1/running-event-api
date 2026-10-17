@@ -33,10 +33,13 @@ src/
     event / review / slip / participant / shipping / dashboard / report / export / user / auth / audit / expiry
   models/                Mongoose schema + index + type lean (เช่น RaceLean), index.ts รวม export ทุก model
   validators/            Zod schema ของ body/query/params พร้อม export type z.infer ของทุก schema
-  middlewares/           auth/role, upload, validate (+ validatedParams/Query/Body), error handler, rate limit, origin check
+  middlewares/           auth/role, upload, validate (+ validatedParams/Query/Body), error handler (แปลง error → status), rate limit, origin check
+    response-envelope.ts ครอบ res.json ให้ทุก response เป็น { statusCode, success, message, ... }
+    content-type.ts      415 เมื่อ body ผิดชนิด / method-not-allowed.ts 405 + Allow
+  types/api.ts           type ของ envelope: ApiSuccess<T> / ApiFailure / PageMeta
   utils/
     api-error.ts         ApiError (notFound, conflict, validation ...) ให้ errorHandler แปลงเป็น JSON
-    response.ts          ok() / created()
+    response.ts          ok() / created() / done() และ buildEnvelope()
     lean.ts              withId(): แปลงผล .lean() ให้ได้ { id, ...rest } แบบเดียวกับ toJSON
     collections.ts       groupBy()
     date-range.ts, pagination.ts, transaction.ts (withTransaction), crypto.ts (AES-256-GCM), csv.ts, slip-file.ts ฯลฯ
@@ -273,8 +276,90 @@ workflow: `.github/workflows/ci-cd.yml`
 
 ## รูปแบบ response
 
-- สำเร็จ: `{ "data": ..., "meta": { "page", "pageSize", "total", "totalPages" } }` (`meta` มีเฉพาะรายการแบบแบ่งหน้า)
-- ผิดพลาด: `{ "error": { "code": "...", "message": "...", "fields": { ... } } }`
+ทุก response ที่เป็น JSON ถูกห่อด้วย envelope เดียวกัน (เพิ่ม `statusCode`, `success`, `message` นำหน้า key เดิม ไม่ลบ/เปลี่ยนชื่อ key เดิม) ทำที่ศูนย์กลางใน `middlewares/response-envelope.ts` ไม่ต้องแก้ controller
+type ฝั่ง TypeScript อยู่ที่ `src/types/api.ts` (`ApiSuccess<T>`, `ApiFailure`)
+
+`message` ของ response สำเร็จเป็นข้อความไทยตาม status จากตารางเดียว (`STATUS_MESSAGE` ใน `config/constants.ts`) เช่น 200 `สำเร็จ`, 201 `สร้างสำเร็จ` ส่วน response ผิดพลาด `message` เท่ากับ `error.message`
+
+สำเร็จ (200):
+
+```json
+{
+  "statusCode": 200,
+  "success": true,
+  "message": "สำเร็จ",
+  "data": {
+    "name": "Super Admin",
+    "email": "admin@example.com",
+    "role": "super_admin",
+    "active": true,
+    "createdAt": "2026-10-17T12:11:16.687Z",
+    "updatedAt": "2026-10-17T12:11:40.785Z",
+    "lastLoginAt": "2026-10-17T12:11:40.741Z",
+    "id": "6ad365e450b60c80aa3103bf"
+  }
+}
+```
+
+รายการแบบแบ่งหน้า (200) `meta` อยู่ระดับเดียวกับ `data`:
+
+```json
+{
+  "statusCode": 200,
+  "success": true,
+  "message": "สำเร็จ",
+  "data": [ { "id": "..." } ],
+  "meta": { "page": 1, "pageSize": 20, "total": 3, "totalPages": 1 }
+}
+```
+
+ผิดพลาด (422) object `error` เหมือนเดิมทุกประการ:
+
+```json
+{
+  "statusCode": 422,
+  "success": false,
+  "message": "ข้อมูลไม่ถูกต้อง",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "ข้อมูลไม่ถูกต้อง",
+    "fields": { "email": "รูปแบบอีเมลไม่ถูกต้อง" }
+  }
+}
+```
+
+ข้อยกเว้น:
+- CSV export (`text/csv`) และไฟล์สลิป (`image/*`) ส่งเป็นไฟล์ดิบ ไม่มี envelope
+- 304 (conditional GET ผ่าน ETag) ไม่มี body
+- `GET /health` ตอบ envelope เช่นกัน เมื่อ DB ไม่พร้อมจะเป็น 503 `success:false` และ `data.status = "unavailable"` (ไม่มี object `error`)
+- logout และ change-password ตอบ 200 พร้อม `data: null` (เดิม 204 ไม่มี body)
+- ถ้า body เดิมมี key ระดับบนชื่อ `statusCode`/`success`/`message` อยู่แล้ว จะถูกซ้อนไว้ใต้ `data` แทนการทับ
+
+### HTTP status codes
+
+| Status | ใช้เมื่อ | ตัวอย่าง `error.code` |
+|---|---|---|
+| 200 | อ่าน/แก้ไข/ดำเนินการสำเร็จ (รวม login, logout, อัปโหลดสลิป) | - |
+| 201 | สร้างสำเร็จ (งาน + `Location`, ออเดอร์, ผู้ใช้) | - |
+| 400 | input อ่านไม่ได้: JSON เสีย, id/slug/orderNo ใน URL ผิดรูปแบบ, multipart เสีย, Mongoose CastError | `INVALID_JSON`, `INVALID_PARAM`, `UPLOAD_ERROR`, `BAD_REQUEST` |
+| 401 | ยังไม่ล็อกอิน / token หมดอายุหรือไม่ถูกต้อง / รหัสผ่านผิด | `UNAUTHORIZED`, `INVALID_CREDENTIALS` |
+| 403 | role ไม่พอ หรือ Origin ไม่อยู่ใน `CORS_ORIGINS` (เฉพาะ method ที่แก้ข้อมูล) | `FORBIDDEN` |
+| 404 | ไม่พบข้อมูลหรือไม่พบ route | `NOT_FOUND`, `EVENT_NOT_FOUND`, `ORDER_NOT_FOUND` |
+| 405 | path มีอยู่แต่ไม่รองรับ method (มี header `Allow`) | `METHOD_NOT_ALLOWED` |
+| 409 | ขัดแย้งกับสถานะปัจจุบัน: ข้อมูลซ้ำ, state ไม่ถูกต้อง, โควตาเต็ม, งานมีออเดอร์แล้ว | `SLUG_TAKEN`, `EMAIL_TAKEN`, `DUPLICATE_TRANSACTION_REF`, `INVALID_STATE`, `QUOTA_FULL`, `EVENT_HAS_ORDERS` |
+| 413 | body JSON เกิน 100kb หรือไฟล์สลิปเกิน `MAX_SLIP_MB` | `PAYLOAD_TOO_LARGE`, `FILE_TOO_LARGE` |
+| 415 | Content-Type ไม่ตรง (ต้อง JSON / multipart) หรือไฟล์สลิปไม่ใช่รูป | `UNSUPPORTED_MEDIA_TYPE`, `UNSUPPORTED_FILE_TYPE` |
+| 422 | Zod / Mongoose validation ไม่ผ่าน (มี `fields`) รวม query string | `VALIDATION_ERROR` |
+| 429 | เกิน rate limit (มี header `Retry-After`) | `RATE_LIMITED` |
+| 500 | error ที่ไม่คาดคิด (ข้อความทั่วไป ไม่เปิดเผย stack) | `INTERNAL_ERROR` |
+| 503 | MongoDB ไม่พร้อม/timeout (มี `Retry-After: 5`) และ `/health` ตอน DB ล่ม | `SERVICE_UNAVAILABLE` |
+
+ไม่ใช้ 410 และไม่มี redirect (3xx) ค่า status ทั้งหมดอยู่ใน `HTTP_STATUS` ที่ `config/constants.ts`
+
+หมายเหตุการเปลี่ยนแปลง: id/slug/orderNo ใน URL ที่ผิดรูปแบบเปลี่ยนจาก 404 เป็น 400 `INVALID_PARAM`, request ที่ส่ง body ผิด Content-Type ได้ 415 แทน 422, และ logout/change-password เปลี่ยนจาก 204 เป็น 200
+
+### Fields และรหัสอื่น ๆ
+
 - `fields` ใช้คีย์เดียวกับ `FieldErrors` ของหน้าบ้าน (`firstName`, `birthDate`, `phone`, `identity`, `race`, `size` ...)
   โดยออเดอร์ใช้ `participants.<index>.<field>` และ `delivery.<field>`
 - รหัสที่พบบ่อย: `VALIDATION_ERROR` 422, `UNAUTHORIZED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404,
@@ -301,11 +386,11 @@ workflow: `.github/workflows/ci-cd.yml`
 | Method | Path | สิทธิ์ | คำอธิบาย |
 |---|---|---|---|
 | POST | `/admin/auth/login` | - | ตั้ง cookie `rr_admin_token` (httpOnly) จำกัดจำนวนครั้งต่อ IP+email |
-| POST | `/admin/auth/logout` | ทุก role | ล้าง cookie |
+| POST | `/admin/auth/logout` | ทุก role | ล้าง cookie (200 พร้อม envelope, `data: null`) |
 | GET | `/admin/auth/me` | ทุก role | ข้อมูลผู้ใช้ปัจจุบัน |
-| POST | `/admin/auth/change-password` | ทุก role | เปลี่ยนรหัสผ่าน (≥ 10 ตัวอักษร) |
+| POST | `/admin/auth/change-password` | ทุก role | เปลี่ยนรหัสผ่าน (≥ 10 ตัวอักษร) 200 พร้อม envelope, `data: null` |
 | GET | `/admin/events`, `/admin/events/:id` | S R V | รายการ/รายละเอียดงาน พร้อม `orderCount` |
-| POST | `/admin/events` | S | สร้างงาน + ระยะ (409 `SLUG_TAKEN` ถ้า slug ซ้ำ) |
+| POST | `/admin/events` | S | สร้างงาน + ระยะ ตอบ 201 + header `Location` (409 `SLUG_TAKEN` ถ้า slug ซ้ำ) |
 | PUT | `/admin/events/:id` | S | แก้งาน (409 `EVENT_HAS_ORDERS` ถ้าแก้ราคา/โควตา/ลบ/เปลี่ยนชื่อระยะหลังมีออเดอร์) |
 | GET | `/admin/orders`, `/admin/orders/:id` | S R V | filter: `eventId, status, q, from, to, page, pageSize` |
 | POST | `/admin/orders/:id/cancel` | S R | ยกเลิก (คืนโควตา) |

@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { API_PREFIX } from "../config/constants";
 import {
   validatedBody,
   validatedParams,
@@ -22,10 +23,13 @@ export async function get(_req: Request, res: Response) {
   ok(res, await eventService.getAdmin(validatedParams<IdParams>(res).id));
 }
 export async function create(req: Request, res: Response) {
-  created(
-    res,
-    await eventService.create(req.user!.id, validatedBody<EventBody>(req)),
+  const event = await eventService.create(
+    req.user!.id,
+    validatedBody<EventBody>(req),
   );
+  created(res, event, {
+    location: `${API_PREFIX}/admin/events/${event.id}`,
+  });
 }
 export async function update(req: Request, res: Response) {
   ok(

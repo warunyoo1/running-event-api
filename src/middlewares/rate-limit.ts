@@ -1,10 +1,28 @@
-import type { Request } from "express";
+import type { Request, Response } from "express";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
+import { HTTP_STATUS } from "../config/constants";
 import { env } from "../config/env";
 import { ApiError } from "../utils/api-error";
 
-const handler = (_req: Request, _res: unknown, next: (e: unknown) => void) =>
-  next(new ApiError(429, "RATE_LIMITED", "คำขอมากเกินไป กรุณาลองใหม่ภายหลัง"));
+const handler = (
+  req: Request,
+  res: Response,
+  next: (e: unknown) => void,
+) => {
+  if (!res.getHeader("Retry-After")) {
+    const info = (req as Request & { rateLimit?: { resetTime?: Date } })
+      .rateLimit;
+    const resetMs = info?.resetTime?.getTime() ?? Date.now();
+    res.set("Retry-After", String(Math.max(1, Math.ceil((resetMs - Date.now()) / 1000))));
+  }
+  next(
+    new ApiError(
+      HTTP_STATUS.TOO_MANY_REQUESTS,
+      "RATE_LIMITED",
+      "คำขอมากเกินไป กรุณาลองใหม่ภายหลัง",
+    ),
+  );
+};
 
 const base = {
   standardHeaders: "draft-7" as const,

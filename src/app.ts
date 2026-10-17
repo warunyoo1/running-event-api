@@ -6,6 +6,7 @@ import morgan from "morgan";
 import { env } from "./config/env";
 import { errorHandler } from "./middlewares/error-handler";
 import { notFound } from "./middlewares/not-found";
+import { responseEnvelope } from "./middlewares/response-envelope";
 import { routes } from "./routes";
 
 export function createApp() {
@@ -18,6 +19,7 @@ export function createApp() {
   app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
   app.use(cors({ origin: env.corsOrigins, credentials: true }));
   if (!env.isTest) app.use(morgan(env.isProd ? "combined" : "dev"));
+  app.use(responseEnvelope);
   app.use(express.json({ limit: "100kb" }));
   app.use(cookieParser());
 

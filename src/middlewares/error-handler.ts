@@ -1,14 +1,32 @@
 import type { NextFunction, Request, Response } from "express";
+import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import multer from "multer";
 import { ZodError } from "zod";
-import { ApiError } from "../utils/api-error";
+import {
+  HTTP_STATUS,
+  RETRY_AFTER_UNAVAILABLE_SEC,
+  STATUS_MESSAGE,
+} from "../config/constants";
+import { ApiError, type FieldErrors } from "../utils/api-error";
 import { flattenZod } from "../validators/common.validator";
 
 type DupKeyError = {
-  code: number;
+  code?: number | string;
   keyPattern?: Record<string, unknown>;
   message?: string;
+  name?: string;
+  type?: string;
+  status?: number;
+  statusCode?: number;
+};
+
+type Resolved = {
+  status: number;
+  code: string;
+  message: string;
+  fields?: FieldErrors;
+  headers?: Record<string, string>;
 };
 
 const dupMap: Record<string, [string, string]> = {
@@ -22,53 +40,152 @@ const dupMap: Record<string, [string, string]> = {
   event_race_unique: ["DUPLICATE_RACE", "ชื่อระยะซ้ำกัน"],
 };
 
-function send(
-  res: Response,
+/** Mongo driver / Mongoose errors that mean "database not reachable right now". */
+const MONGO_UNAVAILABLE_NAMES = new Set([
+  "MongoNetworkError",
+  "MongoNetworkTimeoutError",
+  "MongoServerSelectionError",
+  "MongooseServerSelectionError",
+  "MongoTopologyClosedError",
+  "MongoNotConnectedError",
+  "MongoPoolClearedError",
+  "MongoPoolClosedError",
+  "MongoWaitQueueTimeoutError",
+]);
+const MONGO_MAX_TIME_MS_EXPIRED = 50;
+
+function isMongoUnavailable(err: unknown): boolean {
+  const e = err as DupKeyError | null;
+  if (!e || typeof e !== "object") return false;
+  if (e.name && MONGO_UNAVAILABLE_NAMES.has(e.name)) return true;
+  if (e.name === "MongoServerError" && e.code === MONGO_MAX_TIME_MS_EXPIRED)
+    return true;
+  return (
+    err instanceof mongoose.Error && /buffering timed out/i.test(err.message)
+  );
+}
+
+const make = (
   status: number,
   code: string,
   message: string,
-  fields?: Record<string, string>,
-) {
-  res
-    .status(status)
-    .json({ error: { code, message, ...(fields ? { fields } : {}) } });
-}
+  fields?: FieldErrors,
+): Resolved => ({ status, code, message, ...(fields ? { fields } : {}) });
 
-export function errorHandler(
-  err: unknown,
-  _req: Request,
-  res: Response,
-  _next: NextFunction,
-) {
+/** Pure mapping from any thrown value to status + error body. Unknown errors become a generic 500. */
+function resolveError(err: unknown): Resolved {
   if (err instanceof ApiError)
-    return send(res, err.status, err.code, err.message, err.fields);
+    return make(err.status, err.code, err.message, err.fields);
   if (err instanceof ZodError)
-    return send(
-      res,
-      422,
+    return make(
+      HTTP_STATUS.UNPROCESSABLE_ENTITY,
       "VALIDATION_ERROR",
       "ข้อมูลไม่ถูกต้อง",
       flattenZod(err),
     );
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE")
-      return send(res, 413, "FILE_TOO_LARGE", "ไฟล์ใหญ่เกินกำหนด");
-    return send(res, 400, "UPLOAD_ERROR", "อัปโหลดไฟล์ไม่สำเร็จ");
+      return make(
+        HTTP_STATUS.PAYLOAD_TOO_LARGE,
+        "FILE_TOO_LARGE",
+        "ไฟล์ใหญ่เกินกำหนด",
+      );
+    return make(
+      HTTP_STATUS.BAD_REQUEST,
+      "UPLOAD_ERROR",
+      "อัปโหลดไฟล์ไม่สำเร็จ",
+    );
   }
-  const e = err as DupKeyError & { type?: string; status?: number };
+  if (err instanceof jwt.JsonWebTokenError)
+    return make(
+      HTTP_STATUS.UNAUTHORIZED,
+      "UNAUTHORIZED",
+      "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+    );
+  if (err instanceof mongoose.Error.ValidationError) {
+    const fields: FieldErrors = {};
+    for (const [path, e] of Object.entries(err.errors)) fields[path] = e.message;
+    return make(
+      HTTP_STATUS.UNPROCESSABLE_ENTITY,
+      "VALIDATION_ERROR",
+      "ข้อมูลไม่ถูกต้อง",
+      fields,
+    );
+  }
+  if (err instanceof mongoose.Error.CastError)
+    return make(
+      HTTP_STATUS.BAD_REQUEST,
+      "BAD_REQUEST",
+      "ข้อมูลที่ส่งมามีรูปแบบไม่ถูกต้อง",
+    );
+  const e = err as DupKeyError | null;
   if (e?.code === 11000) {
     const hit = Object.entries(dupMap).find(([name]) =>
       e.message?.includes(name),
     );
-    if (hit) return send(res, 409, hit[1][0], hit[1][1]);
-    return send(res, 409, "DUPLICATE", "ข้อมูลซ้ำ");
+    if (hit) return make(HTTP_STATUS.CONFLICT, hit[1][0], hit[1][1]);
+    return make(HTTP_STATUS.CONFLICT, "DUPLICATE", "ข้อมูลซ้ำ");
   }
-  if (err instanceof mongoose.Error.CastError)
-    return send(res, 404, "NOT_FOUND", "ไม่พบข้อมูล");
+  if (isMongoUnavailable(err)) {
+    console.error("Database unavailable:", err);
+    return {
+      ...make(
+        HTTP_STATUS.SERVICE_UNAVAILABLE,
+        "SERVICE_UNAVAILABLE",
+        STATUS_MESSAGE[HTTP_STATUS.SERVICE_UNAVAILABLE],
+      ),
+      headers: { "Retry-After": String(RETRY_AFTER_UNAVAILABLE_SEC) },
+    };
+  }
   if (e?.type === "entity.parse.failed")
-    return send(res, 400, "INVALID_JSON", "รูปแบบ JSON ไม่ถูกต้อง");
+    return make(
+      HTTP_STATUS.BAD_REQUEST,
+      "INVALID_JSON",
+      "รูปแบบ JSON ไม่ถูกต้อง",
+    );
   if (e?.type === "entity.too.large")
-    return send(res, 413, "PAYLOAD_TOO_LARGE", "ข้อมูลที่ส่งมาใหญ่เกินไป");
+    return make(
+      HTTP_STATUS.PAYLOAD_TOO_LARGE,
+      "PAYLOAD_TOO_LARGE",
+      "ข้อมูลที่ส่งมาใหญ่เกินไป",
+    );
+  if (e?.type === "encoding.unsupported" || e?.type === "charset.unsupported")
+    return make(
+      HTTP_STATUS.UNSUPPORTED_MEDIA_TYPE,
+      "UNSUPPORTED_MEDIA_TYPE",
+      STATUS_MESSAGE[HTTP_STATUS.UNSUPPORTED_MEDIA_TYPE],
+    );
+  // http-errors style client errors (router URIError, request.aborted, ...): generic 400 only.
+  const status = e?.status ?? e?.statusCode;
+  if (typeof status === "number" && status >= 400 && status < 500)
+    return make(
+      HTTP_STATUS.BAD_REQUEST,
+      "BAD_REQUEST",
+      STATUS_MESSAGE[HTTP_STATUS.BAD_REQUEST],
+    );
   console.error("Unhandled error:", err);
-  send(res, 500, "INTERNAL_ERROR", "เกิดข้อผิดพลาดภายในระบบ");
+  return make(
+    HTTP_STATUS.INTERNAL_SERVER_ERROR,
+    "INTERNAL_ERROR",
+    STATUS_MESSAGE[HTTP_STATUS.INTERNAL_SERVER_ERROR],
+  );
+}
+
+export function errorHandler(
+  err: unknown,
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  if (res.headersSent) return next(err);
+  const r = resolveError(err);
+  if (r.headers) res.set(r.headers);
+  // responseEnvelope adds statusCode/success/message around this body.
+  res.status(r.status).json({
+    error: {
+      code: r.code,
+      message: r.message,
+      ...(r.fields ? { fields: r.fields } : {}),
+    },
+  });
 }

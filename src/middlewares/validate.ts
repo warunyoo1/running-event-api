@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { ZodTypeAny } from "zod";
+import { HTTP_STATUS } from "../config/constants";
 import { ApiError } from "../utils/api-error";
 import { flattenZod } from "../validators/common.validator";
 
@@ -22,12 +23,18 @@ export function validate(schemas: Schemas) {
       value: unknown,
       prefix: string,
       assign: (v: unknown) => void,
-      notFoundOnFail = false,
+      isParams = false,
     ) => {
       if (!schema) return;
       const result = schema.safeParse(value ?? {});
       if (result.success) return assign(result.data);
-      if (notFoundOnFail) throw ApiError.notFound();
+      if (isParams)
+        throw new ApiError(
+          HTTP_STATUS.BAD_REQUEST,
+          "INVALID_PARAM",
+          "พารามิเตอร์ใน URL ไม่ถูกต้อง",
+          flattenZod(result.error),
+        );
       for (const [k, v] of Object.entries(flattenZod(result.error)))
         fields[prefix ? `${prefix}.${k}` : k] = v;
     };

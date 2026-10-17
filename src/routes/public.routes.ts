@@ -1,6 +1,8 @@
 import { Router } from "express";
 import * as events from "../controllers/public-event.controller";
 import * as orders from "../controllers/public-order.controller";
+import { requireContentType } from "../middlewares/content-type";
+import { addMethodNotAllowed } from "../middlewares/method-not-allowed";
 import { orderLimiter, publicLimiter } from "../middlewares/rate-limit";
 import { uploadSlip } from "../middlewares/upload";
 import { validate } from "../middlewares/validate";
@@ -28,6 +30,7 @@ publicRoutes.get(
 publicRoutes.post(
   "/events/:slug/orders",
   orderLimiter,
+  requireContentType("json"),
   validate({ params: slugParam, body: createOrderBody }),
   orders.create,
 );
@@ -40,7 +43,10 @@ publicRoutes.get(
 publicRoutes.post(
   "/orders/:orderNo/slip",
   orderLimiter,
+  requireContentType("multipart"),
   uploadSlip,
   validate({ params: orderNoParam, body: slipBody }),
   orders.uploadSlip,
 );
+
+addMethodNotAllowed(publicRoutes);
