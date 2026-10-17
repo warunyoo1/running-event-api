@@ -17,6 +17,18 @@ export const eventCategories = ["road", "trail", "fun"] as const;
 export const eventThemes = ["orange", "green", "blue", "pink", "navy", "sand"] as const;
 export const deliveryMethods = ["pickup", "shipping"] as const;
 
+/** Event image kinds (keep in sync with the admin UI constants). */
+export const eventImageKinds = ["cover", "poster", "gallery", "route_map", "shirt", "medal", "sponsor", "other"] as const;
+export type EventImageKind = (typeof eventImageKinds)[number];
+export const EVENT_IMAGE_MAX_PER_EVENT = 30;
+export const EVENT_IMAGE_MAX_FILES_PER_REQUEST = 10;
+export const EVENT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+/** Allowed types, detected from magic bytes only (no SVG/GIF). */
+export const EVENT_IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp"] as const;
+export const EVENT_IMAGE_ALT_MAX = 200;
+export const EVENT_IMAGE_SORT_MAX = 9999;
+export const EVENT_IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
 /** Race start time, 24h `HH:mm`. Shared by the API validator and the Race schema. */
 export const TIME_HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 

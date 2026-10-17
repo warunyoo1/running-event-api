@@ -1,12 +1,16 @@
 import { z } from "zod";
 import {
+  EVENT_IMAGE_ALT_MAX,
+  EVENT_IMAGE_MAX_PER_EVENT,
+  EVENT_IMAGE_SORT_MAX,
   PUBLIC_EVENT_STATUSES,
   TIME_HHMM,
   eventCategories,
+  eventImageKinds,
   eventStatuses,
   eventThemes,
 } from "../config/constants";
-import { optStr, pageQuery } from "./common.validator";
+import { objectId, optStr, pageQuery } from "./common.validator";
 
 const ymd = z
   .string()
@@ -93,3 +97,34 @@ export const adminEventsQuery = pageQuery.extend({
   ),
 });
 export type AdminEventsQuery = z.infer<typeof adminEventsQuery>;
+
+// --- event images (kept out of `eventBody`: PUT /events/:id never touches images) ---
+const imageAlt = z
+  .string()
+  .trim()
+  .max(EVENT_IMAGE_ALT_MAX, `alt ยาวได้ไม่เกิน ${EVENT_IMAGE_ALT_MAX} ตัวอักษร`);
+
+export const uploadImagesBody = z.object({
+  kind: z.enum(eventImageKinds, { message: "ประเภทรูปไม่ถูกต้อง" }),
+  alt: imageAlt.optional(),
+});
+export type UploadImagesBody = z.infer<typeof uploadImagesBody>;
+
+export const patchImageBody = z
+  .object({
+    kind: z.enum(eventImageKinds, { message: "ประเภทรูปไม่ถูกต้อง" }).optional(),
+    alt: imageAlt.optional(),
+    sortOrder: z.number().int().min(0).max(EVENT_IMAGE_SORT_MAX).optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: "ไม่มีข้อมูลที่จะแก้ไข",
+  });
+export type PatchImageBody = z.infer<typeof patchImageBody>;
+
+export const reorderBody = z
+  .object({ ids: z.array(objectId).min(1).max(EVENT_IMAGE_MAX_PER_EVENT) })
+  .refine((v) => new Set(v.ids).size === v.ids.length, {
+    path: ["ids"],
+    message: "รายการรูปภาพซ้ำกัน",
+  });
+export type ReorderBody = z.infer<typeof reorderBody>;

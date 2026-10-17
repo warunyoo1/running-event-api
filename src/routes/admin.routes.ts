@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as auth from "../controllers/auth.controller";
 import * as dashboard from "../controllers/dashboard.controller";
+import * as eventImages from "../controllers/admin-event-image.controller";
 import * as events from "../controllers/admin-event.controller";
 import * as exports_ from "../controllers/export.controller";
 import * as orders from "../controllers/admin-order.controller";
@@ -19,17 +20,31 @@ import {
 import { requireContentType } from "../middlewares/content-type";
 import { addMethodNotAllowed } from "../middlewares/method-not-allowed";
 import { originCheck } from "../middlewares/origin-check";
-import { loginLimiter } from "../middlewares/rate-limit";
+import { loginLimiter, uploadLimiter } from "../middlewares/rate-limit";
+import { uploadEventImages } from "../middlewares/upload";
 import { validate } from "../middlewares/validate";
 import * as v from "../validators/admin.validator";
 import { changePasswordBody, loginBody } from "../validators/auth.validator";
-import { objectIdParam } from "../validators/common.validator";
-import { adminEventsQuery, eventBody } from "../validators/event.validator";
+import { imageParams, objectIdParam } from "../validators/common.validator";
+import {
+  adminEventsQuery,
+  eventBody,
+  patchImageBody,
+  reorderBody,
+  uploadImagesBody,
+} from "../validators/event.validator";
 import { createUserBody, updateUserBody } from "../validators/user.validator";
 
 export const adminRoutes = Router();
 adminRoutes.use(originCheck);
-adminRoutes.use(requireContentType("json")); // no admin route accepts multipart
+// Every admin route takes JSON except the event image upload, which is multipart (checked on the route).
+const json = requireContentType("json");
+const IMAGE_UPLOAD_PATH = /^\/events\/[^/]+\/images\/?$/;
+adminRoutes.use((req, res, next) =>
+  req.method === "POST" && IMAGE_UPLOAD_PATH.test(req.path)
+    ? next()
+    : json(req, res, next),
+);
 
 // --- auth ---
 adminRoutes.post(
@@ -73,6 +88,44 @@ adminRoutes.put(
   superOnly,
   validate({ params: objectIdParam, body: eventBody }),
   events.update,
+);
+
+// --- event images (writes: super_admin only; multipart upload runs after auth + role) ---
+adminRoutes.get("/events/:id/images", read, id, eventImages.list);
+adminRoutes.post(
+  "/events/:id/images",
+  superOnly,
+  id,
+  uploadLimiter,
+  requireContentType("multipart"),
+  uploadEventImages,
+  validate({ body: uploadImagesBody }),
+  eventImages.upload,
+);
+// literal "order" is registered before the ":imageId" routes
+adminRoutes.put(
+  "/events/:id/images/order",
+  superOnly,
+  validate({ params: objectIdParam, body: reorderBody }),
+  eventImages.reorder,
+);
+adminRoutes.patch(
+  "/events/:id/images/:imageId",
+  superOnly,
+  validate({ params: imageParams, body: patchImageBody }),
+  eventImages.patch,
+);
+adminRoutes.delete(
+  "/events/:id/images/:imageId",
+  superOnly,
+  validate({ params: imageParams }),
+  eventImages.remove,
+);
+adminRoutes.get(
+  "/events/:id/images/:imageId/file",
+  read,
+  validate({ params: imageParams }),
+  eventImages.adminFile,
 );
 
 // --- orders ---

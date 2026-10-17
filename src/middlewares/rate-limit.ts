@@ -55,3 +55,17 @@ export const loginLimiter = rateLimit({
       .toLowerCase()
       .slice(0, 200)}`,
 });
+/** Event image uploads by admins: per user (falls back to IP). Mounted after `requireAuth`. */
+export const uploadLimiter = rateLimit({
+  ...base,
+  windowMs: 60_000,
+  limit: env.UPLOAD_RATE_MAX,
+  keyGenerator: (req) => req.user?.id ?? ip(req),
+});
+/** Public event image reads: a gallery loads many files, so this is looser than `publicLimiter`. */
+export const imageLimiter = rateLimit({
+  ...base,
+  windowMs: 60_000,
+  limit: env.IMAGE_RATE_MAX,
+  keyGenerator: ip,
+});

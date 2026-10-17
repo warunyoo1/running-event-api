@@ -1,6 +1,26 @@
 import { Schema, model, type InferSchemaType } from "mongoose";
-import { eventCategories, eventStatuses, eventThemes } from "../config/constants";
+import {
+  EVENT_IMAGE_ALT_MAX,
+  EVENT_IMAGE_MIMES,
+  eventCategories,
+  eventImageKinds,
+  eventStatuses,
+  eventThemes,
+} from "../config/constants";
 import { cleanJson } from "./plugins";
+
+/** Event image (subdocument; `_id` is the image id). `filename` is server generated and never sent to clients. */
+const eventImageSchema = new Schema(
+  {
+    kind: { type: String, enum: eventImageKinds, required: true },
+    filename: { type: String, required: true }, // "<uuid>.<jpg|png|webp>"
+    mime: { type: String, enum: EVENT_IMAGE_MIMES, required: true },
+    size: { type: Number, required: true }, // bytes
+    alt: { type: String, default: "", maxlength: EVENT_IMAGE_ALT_MAX },
+    sortOrder: { type: Number, default: 0 },
+  },
+  { timestamps: { createdAt: true, updatedAt: false } },
+);
 
 const eventSchema = new Schema(
   {
@@ -18,11 +38,13 @@ const eventSchema = new Schema(
     organizer: { type: String, default: "" },
     refundPolicy: { type: String },
     archived: { type: Boolean, default: false },
+    images: { type: [eventImageSchema], default: [] },
   },
   { timestamps: true },
 );
 eventSchema.index({ slug: 1 }, { unique: true, name: "slug_unique" });
 eventSchema.index({ status: 1, date: 1 });
+eventSchema.index({ "images._id": 1 }, { name: "image_id" }); // file lookup by image id
 cleanJson(eventSchema);
 
 export type EventDoc = InferSchemaType<typeof eventSchema>;

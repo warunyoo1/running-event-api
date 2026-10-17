@@ -67,8 +67,10 @@ src/
 | `COOKIE_SECURE` | | ว่าง = `true` เมื่อ production ถ้าเทสต์ผ่าน http ล้วนให้ตั้ง `false` |
 | `CORS_ORIGINS` | ✔ | origin ของหน้าบ้านและหลังบ้าน คั่นด้วย comma ใช้ทั้ง CORS และตรวจ `Origin` ของ request ที่แก้ไขข้อมูล |
 | `ID_ENCRYPTION_KEY` | ✔ | base64 ของ 32 bytes เข้ารหัสเลขบัตรประชาชน (เปลี่ยนภายหลังไม่ได้ ข้อมูลเดิมจะถอดรหัสไม่ได้) |
-| `UPLOAD_DIR` | | โฟลเดอร์เก็บสลิป ค่าเริ่มต้น `./uploads` (ใน docker เป็น volume `/app/uploads`) |
+| `UPLOAD_DIR` | | โฟลเดอร์เก็บสลิป (`slips/`) และรูปงานวิ่ง (`events/`) ค่าเริ่มต้น `./uploads` (ใน docker เป็น volume `/app/uploads` ต้อง persistent) path ต้องไม่มีโฟลเดอร์ที่ขึ้นต้นด้วย `.` |
 | `MAX_SLIP_MB` | | ขนาดสลิปสูงสุด ค่าเริ่มต้น 5 |
+| `UPLOAD_RATE_MAX` | | จำนวนครั้งอัปโหลดรูปงานวิ่งต่อนาทีต่อผู้ใช้ (admin) ค่าเริ่มต้น 20 |
+| `IMAGE_RATE_MAX` | | จำนวนการอ่านไฟล์รูปงานวิ่ง (public) ต่อนาทีต่อ IP ค่าเริ่มต้น 600 |
 | `ORDER_EXPIRE_HOURS` | | ออเดอร์ `pending` หมดอายุกี่ชั่วโมง ค่าเริ่มต้น 24 |
 | `SHIPPING_FEE` | | ค่าจัดส่งต่อออเดอร์ ค่าเริ่มต้น 50 บาท |
 | `BCRYPT_COST` | | ค่าเริ่มต้น 12 |
@@ -340,16 +342,16 @@ type ฝั่ง TypeScript อยู่ที่ `src/types/api.ts` (`ApiSucce
 | Status | ใช้เมื่อ | ตัวอย่าง `error.code` |
 |---|---|---|
 | 200 | อ่าน/แก้ไข/ดำเนินการสำเร็จ (รวม login, logout, อัปโหลดสลิป) | - |
-| 201 | สร้างสำเร็จ (งาน + `Location`, ออเดอร์, ผู้ใช้) | - |
+| 201 | สร้างสำเร็จ (งาน + `Location`, ออเดอร์, ผู้ใช้, รูปงานวิ่ง) | - |
 | 400 | input อ่านไม่ได้: JSON เสีย, id/slug/orderNo ใน URL ผิดรูปแบบ, multipart เสีย, Mongoose CastError | `INVALID_JSON`, `INVALID_PARAM`, `UPLOAD_ERROR`, `BAD_REQUEST` |
 | 401 | ยังไม่ล็อกอิน / token หมดอายุหรือไม่ถูกต้อง / รหัสผ่านผิด | `UNAUTHORIZED`, `INVALID_CREDENTIALS` |
 | 403 | role ไม่พอ หรือ Origin ไม่อยู่ใน `CORS_ORIGINS` (เฉพาะ method ที่แก้ข้อมูล) | `FORBIDDEN` |
-| 404 | ไม่พบข้อมูลหรือไม่พบ route | `NOT_FOUND`, `EVENT_NOT_FOUND`, `ORDER_NOT_FOUND` |
+| 404 | ไม่พบข้อมูลหรือไม่พบ route | `NOT_FOUND`, `EVENT_NOT_FOUND`, `ORDER_NOT_FOUND`, `IMAGE_NOT_FOUND` |
 | 405 | path มีอยู่แต่ไม่รองรับ method (มี header `Allow`) | `METHOD_NOT_ALLOWED` |
-| 409 | ขัดแย้งกับสถานะปัจจุบัน: ข้อมูลซ้ำ, state ไม่ถูกต้อง, โควตาเต็ม, งานมีออเดอร์แล้ว | `SLUG_TAKEN`, `EMAIL_TAKEN`, `DUPLICATE_TRANSACTION_REF`, `INVALID_STATE`, `QUOTA_FULL`, `EVENT_HAS_ORDERS` |
-| 413 | body JSON เกิน 100kb หรือไฟล์สลิปเกิน `MAX_SLIP_MB` | `PAYLOAD_TOO_LARGE`, `FILE_TOO_LARGE` |
-| 415 | Content-Type ไม่ตรง (ต้อง JSON / multipart) หรือไฟล์สลิปไม่ใช่รูป | `UNSUPPORTED_MEDIA_TYPE`, `UNSUPPORTED_FILE_TYPE` |
-| 422 | Zod / Mongoose validation ไม่ผ่าน (มี `fields`) รวม query string | `VALIDATION_ERROR` |
+| 409 | ขัดแย้งกับสถานะปัจจุบัน: ข้อมูลซ้ำ, state ไม่ถูกต้อง, โควตาเต็ม, งานมีออเดอร์แล้ว | `SLUG_TAKEN`, `EMAIL_TAKEN`, `DUPLICATE_TRANSACTION_REF`, `INVALID_STATE`, `QUOTA_FULL`, `EVENT_HAS_ORDERS`, `IMAGE_ORDER_STALE` |
+| 413 | body JSON เกิน 100kb, ไฟล์สลิปเกิน `MAX_SLIP_MB` หรือรูปงานวิ่งเกิน 5 MB | `PAYLOAD_TOO_LARGE`, `FILE_TOO_LARGE` |
+| 415 | Content-Type ไม่ตรง (ต้อง JSON / multipart) หรือไฟล์สลิป/รูปงานวิ่งไม่ใช่ JPG, PNG, WEBP | `UNSUPPORTED_MEDIA_TYPE`, `UNSUPPORTED_FILE_TYPE` |
+| 422 | Zod / Mongoose validation ไม่ผ่าน (มี `fields`) รวม query string, อัปโหลดรูปเกิน 10 ไฟล์/ครั้ง หรืองานมีรูปครบ 30 | `VALIDATION_ERROR`, `TOO_MANY_FILES`, `IMAGE_LIMIT_REACHED` |
 | 429 | เกิน rate limit (มี header `Retry-After`) | `RATE_LIMITED` |
 | 500 | error ที่ไม่คาดคิด (ข้อความทั่วไป ไม่เปิดเผย stack) | `INTERNAL_ERROR` |
 | 503 | MongoDB ไม่พร้อม/timeout (มี `Retry-After: 5`) และ `/health` ตอน DB ล่ม | `SERVICE_UNAVAILABLE` |
@@ -375,8 +377,9 @@ type ฝั่ง TypeScript อยู่ที่ `src/types/api.ts` (`ApiSucce
 | Method | Path | คำอธิบาย |
 |---|---|---|
 | GET | `/health` (และ `/api/v1/health`) | ตรวจสถานะ + DB |
-| GET | `/public/events` | รายการงาน (ไม่รวม draft) filter: `q, province, month (YYYY-MM), distance, category, status` มี `remaining` ต่อระยะ |
-| GET | `/public/events/:slug` | รายละเอียดงาน |
+| GET | `/public/events` | รายการงาน (ไม่รวม draft) filter: `q, province, month (YYYY-MM), distance, category, status` มี `remaining` ต่อระยะ และ `images` |
+| GET | `/public/events/:slug` | รายละเอียดงาน (มี `images`) |
+| GET | `/public/event-images/:imageId` | ไฟล์รูปงานวิ่ง ไม่ต้องล็อกอิน เฉพาะงานที่ไม่ใช่ draft ส่งไบต์ตรง ๆ ไม่ห่อ envelope: `Content-Type` ตามที่เก็บ, `X-Content-Type-Options: nosniff`, `Cache-Control: public, max-age=31536000, immutable` (draft/ไม่พบ → 404 `IMAGE_NOT_FOUND`) |
 | POST | `/public/events/:slug/orders` | สร้างออเดอร์ `{participants[], delivery}` เซิร์ฟเวอร์คำนวณยอดเอง ได้ `orderNo`, `amount`, `expiresAt` |
 | GET | `/public/orders/:orderNo?phoneLast4=1234` | ตรวจสถานะออเดอร์ (ไม่มีข้อมูลส่วนบุคคลใน response) |
 | POST | `/public/orders/:orderNo/slip` | อัปโหลดสลิป `multipart/form-data` field `slip` + `phoneLast4` (jpg/png/webp ≤ 5MB ตรวจ magic bytes) |
@@ -405,9 +408,37 @@ type ฝั่ง TypeScript อยู่ที่ `src/types/api.ts` (`ApiSucce
 | GET | `/admin/dashboard?eventId=` | S R V | สรุปจำนวนออเดอร์ รายได้ (เฉพาะ paid) โควตาแต่ละระยะ |
 | GET | `/admin/reports/summary`, `/admin/reports/shirt-sizes` | S R V | รายงานสรุป / ไซส์เสื้อ (`status` เริ่มต้น `paid`) |
 | GET | `/admin/export/orders.csv`, `participants.csv`, `fulfillment.csv` | S R V | CSV UTF-8 BOM ป้องกัน formula injection (ไม่มีเลขบัตรเต็ม) |
+| GET | `/admin/events/:id/images` | S R V | รายการรูปของงาน (เรียงตาม `sortOrder`) |
+| POST | `/admin/events/:id/images` | S | อัปโหลดรูป `multipart/form-data`: `files` (1-10 ไฟล์) + `kind` + `alt` (ไม่บังคับ) ตอบ 201 `data: Image[]` (400 `UPLOAD_ERROR`, 404 `EVENT_NOT_FOUND`, 413 `FILE_TOO_LARGE`, 415 `UNSUPPORTED_FILE_TYPE`, 422 `TOO_MANY_FILES` / `IMAGE_LIMIT_REACHED` / `VALIDATION_ERROR`) |
+| PUT | `/admin/events/:id/images/order` | S | จัดลำดับใหม่ `{ ids: [...] }` ต้องครบทุกรูปของงาน (400, 401, 403, 404 `EVENT_NOT_FOUND`, 409 `IMAGE_ORDER_STALE`, 422) |
+| PATCH | `/admin/events/:id/images/:imageId` | S | แก้ `{ kind?, alt?, sortOrder? }` |
+| DELETE | `/admin/events/:id/images/:imageId` | S | ลบรูปและไฟล์ในดิสก์ ตอบ 200 `data: null` (ไฟล์หายไปแล้วก็ยังตอบ 200) |
+| GET | `/admin/events/:id/images/:imageId/file` | S R V | ไฟล์รูปสำหรับพรีวิวหลังบ้าน (ดูรูปของงาน draft ได้) ต้องมี cookie |
 | GET/POST/PATCH | `/admin/users`, `/admin/users/:id` | S | จัดการผู้ใช้ (ห้ามลดสิทธิ์/ปิดใช้งาน super_admin คนสุดท้าย) |
 
-หมายเหตุ: endpoint อัปโหลดโปสเตอร์/QR ของงานยังไม่อยู่ในขอบเขตรอบนี้
+### รูปภาพงานวิ่ง (Event images)
+
+งานหนึ่งมีรูปได้หลายรูป เก็บเป็น subdocument `images` ใน `Event` (ค่าเริ่มต้น `[]` งานเดิมไม่ต้อง migrate) และ `PUT /admin/events/:id` ไม่แตะ `images` เลย
+
+- ประเภทรูป (`kind`): `cover`, `poster`, `gallery`, `route_map`, `shirt`, `medal`, `sponsor`, `other` (กำหนดที่เดียวใน `config/constants.ts` → `eventImageKinds`)
+- ข้อจำกัด: ไฟล์ละไม่เกิน 5 MB, ไม่เกิน 10 ไฟล์ต่อ request, ไม่เกิน 30 รูปต่องาน, `alt` ไม่เกิน 200 ตัวอักษร
+- ชนิดไฟล์: JPG, PNG, WEBP เท่านั้น ตรวจจาก magic bytes (ไม่เชื่อนามสกุล/mime ที่ client ส่ง) ไม่รับ SVG/GIF
+- การเก็บไฟล์: `UPLOAD_DIR/events/<eventId>/<uuid>.<ext>` ชื่อไฟล์สร้างโดย server (ไม่ใช้ชื่อไฟล์จาก client) mode `0640`
+- ตรวจขนาด/จำนวนระหว่างรับ multipart (multer memory storage) และตรวจ magic bytes ครบทุกไฟล์ก่อนเขียนดิสก์ ถ้ามีไฟล์ใดไม่ผ่านจะไม่เขียนไฟล์ใดเลย ถ้าเขียนไฟล์/บันทึก DB พลาดจะลบไฟล์ที่เขียนไปแล้ว
+- ลำดับ middleware ของ upload: origin → login → role `super_admin` → ตรวจ `:id` → rate limit (`UPLOAD_RATE_MAX`) → Content-Type multipart → multer
+- route ไฟล์ public ค้นจาก image id ใน DB แล้วประกอบ path จาก `_id` ของงาน + ชื่อไฟล์ที่เก็บ จึงไม่มีทาง path traversal และไม่เปิดสลิปหรือไฟล์อื่น
+
+`images` อยู่ใน `GET /public/events`, `GET /public/events/:slug` และ `GET /admin/events[/:id]` เป็น key สุดท้าย เรียงตาม `sortOrder` (key เดิมไม่เปลี่ยน):
+
+```json
+{ "images": [{ "id": "6ad3...a1", "kind": "cover", "alt": "ปก", "url": "/api/v1/public/event-images/6ad3...a1", "sortOrder": 0 }] }
+```
+
+`url` เป็น path สัมพัทธ์กับ API (ใช้ `API_ORIGIN + url`) ฝั่ง admin แต่ละรูปมี `previewUrl`, `mime`, `size`, `createdAt` เพิ่ม
+
+> **Volume `uploads` ต้อง persistent และต้องสำรองข้อมูล** รูปงานวิ่งอยู่ในโฟลเดอร์เดียวกับสลิป (`events/` และ `slips/`) ถ้า volume หาย รูปและสลิปจะหาย และ DB จะชี้ไปยังไฟล์ที่ไม่มีอยู่ (ตอบ 404 `IMAGE_NOT_FOUND`) `docker-compose.prod.yml` mount volume `uploads` ที่ `/app/uploads` อยู่แล้ว ห้ามเปลี่ยนเป็น mount ชั่วคราว
+
+ทดสอบ: `npm test` (vitest unit tests) และโฟลเดอร์ **Event images** ใน Postman collection
 
 ## ขั้นตอนการชำระเงินและสถานะออเดอร์
 

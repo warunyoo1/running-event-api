@@ -52,6 +52,18 @@
     {
       "key": "viewerCookie",
       "value": ""
+    },
+    {
+      "key": "imageId",
+      "value": ""
+    },
+    {
+      "key": "imageId2",
+      "value": ""
+    },
+    {
+      "key": "imageUrl",
+      "value": ""
     }
   ],
   "item": [
@@ -687,6 +699,359 @@
               ]
             },
             "description": "เฉพาะ super_admin. ส่ง body เต็มเหมือนตอนสร้าง"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Event images",
+      "description": "รูปภาพงานวิ่ง (หลายรูปต่องาน). ต้อง Login เป็น super_admin และสร้างงาน (Admin - Events > Create Event) ก่อนเพื่อให้มี {{eventId}}. เลือกไฟล์ JPG/PNG/WEBP ในช่อง files ของ Upload Images ก่อนส่ง (ไฟล์ละไม่เกิน 5 MB, ไม่เกิน 10 ไฟล์ต่อครั้ง, ไม่เกิน 30 รูปต่องาน). รันตามลำดับ: Upload > List > Patch > Reorder > Admin file > Public file > Delete.",
+      "item": [
+        {
+          "name": "Upload Images",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\",()=>pm.response.to.have.status(201));",
+                  "const b=pm.response.json();",
+                  "pm.test(\"body.statusCode 201\",()=>pm.expect(b.statusCode).to.eql(201));",
+                  "pm.test(\"success true\",()=>pm.expect(b.success).to.eql(true));",
+                  "pm.test(\"data is array of images\",()=>{pm.expect(b.data).to.be.an(\"array\").that.is.not.empty;pm.expect(b.data[0]).to.include.keys(\"id\",\"kind\",\"alt\",\"url\",\"sortOrder\");pm.expect(b.data[0]).to.not.have.property(\"filename\");});",
+                  "pm.collectionVariables.set(\"imageId\",b.data[0].id);",
+                  "pm.collectionVariables.set(\"imageId2\",(b.data[1]||b.data[0]).id);",
+                  "pm.collectionVariables.set(\"imageUrl\",b.data[0].url);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "รูปที่ 1 (JPG/PNG/WEBP ≤ 5 MB)"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "รูปที่ 2 (เพิ่มได้สูงสุด 10 ไฟล์ ใช้ key ชื่อ files เหมือนกัน)"
+                },
+                {
+                  "key": "kind",
+                  "value": "gallery",
+                  "type": "text",
+                  "description": "cover|poster|gallery|route_map|shirt|medal|sponsor|other"
+                },
+                {
+                  "key": "alt",
+                  "value": "บรรยากาศงานวิ่ง",
+                  "type": "text",
+                  "description": "ไม่บังคับ ไม่เกิน 200 ตัวอักษร"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/{{eventId}}/images",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "{{eventId}}",
+                "images"
+              ]
+            },
+            "description": "super_admin เท่านั้น. multipart/form-data: files (ซ้ำได้), kind, alt. ห้ามตั้ง Content-Type เอง (Postman ใส่ boundary ให้). 201 พร้อม data เป็น array ของรูปที่สร้าง. ผิดชนิด 415, ใหญ่เกิน 413, เกิน 10 ไฟล์ 422 TOO_MANY_FILES, ครบ 30 รูป 422 IMAGE_LIMIT_REACHED"
+          }
+        },
+        {
+          "name": "List Images (event detail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "const b=pm.response.json();",
+                  "pm.test(\"body.statusCode 200\",()=>pm.expect(b.statusCode).to.eql(200));",
+                  "pm.test(\"success true\",()=>pm.expect(b.success).to.eql(true));",
+                  "pm.test(\"event detail has images\",()=>pm.expect(b.data.images).to.be.an(\"array\"));",
+                  "pm.test(\"images sorted by sortOrder\",()=>{const s=b.data.images.map(i=>i.sortOrder);pm.expect(s).to.eql([...s].sort((x,y)=>x-y));});",
+                  "pm.test(\"image has previewUrl\",()=>{if(b.data.images.length)pm.expect(b.data.images[0]).to.include.keys(\"id\",\"kind\",\"alt\",\"url\",\"previewUrl\",\"mime\",\"size\",\"sortOrder\");});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/{{eventId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "{{eventId}}"
+              ]
+            },
+            "description": "รายละเอียดงาน (ทุก role) มี images เรียงตาม sortOrder. ใช้ GET /admin/events/:id/images ได้เช่นกัน"
+          }
+        },
+        {
+          "name": "Patch Image",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "const b=pm.response.json();",
+                  "pm.test(\"body.statusCode 200\",()=>pm.expect(b.statusCode).to.eql(200));",
+                  "pm.test(\"success true\",()=>pm.expect(b.success).to.eql(true));",
+                  "pm.test(\"patched\",()=>{pm.expect(b.data.id).to.eql(pm.collectionVariables.get(\"imageId\"));pm.expect(b.data.kind).to.eql(\"cover\");pm.expect(b.data.alt).to.eql(\"ภาพปก\");});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"cover\",\n  \"alt\": \"ภาพปก\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/{{eventId}}/images/{{imageId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "{{eventId}}",
+                "images",
+                "{{imageId}}"
+              ]
+            },
+            "description": "super_admin เท่านั้น. แก้ได้ kind, alt, sortOrder (อย่างน้อยหนึ่งค่า)"
+          }
+        },
+        {
+          "name": "Reorder Images",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "const b=pm.response.json();",
+                  "pm.test(\"body.statusCode 200\",()=>pm.expect(b.statusCode).to.eql(200));",
+                  "pm.test(\"sortOrder is 0..n-1\",()=>pm.expect(b.data.map(i=>i.sortOrder)).to.eql(b.data.map((_,i)=>i)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\"{{imageId2}}\", \"{{imageId}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/{{eventId}}/images/order",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "{{eventId}}",
+                "images",
+                "order"
+              ]
+            },
+            "description": "super_admin เท่านั้น. ids ต้องครบทุกรูปของงานตามลำดับใหม่ (ถ้างานมีมากกว่า 2 รูป ให้ใส่ id ให้ครบ). ไม่ครบ 422 fields.ids, รายการเปลี่ยนระหว่างบันทึก 409 IMAGE_ORDER_STALE"
+          }
+        },
+        {
+          "name": "Admin Image File (preview)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "pm.test(\"image content type\",()=>pm.expect(pm.response.headers.get(\"Content-Type\")).to.match(/^image\\/(jpeg|png|webp)$/));",
+                  "pm.test(\"nosniff\",()=>pm.expect(pm.response.headers.get(\"X-Content-Type-Options\")).to.eql(\"nosniff\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/{{eventId}}/images/{{imageId}}/file",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "{{eventId}}",
+                "images",
+                "{{imageId}}",
+                "file"
+              ]
+            },
+            "description": "ทุก role (ต้องมี cookie). ดูรูปของงาน draft ได้. ตอบไบต์ของไฟล์ ไม่ห่อ envelope"
+          }
+        },
+        {
+          "name": "Public Image File",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "pm.test(\"image content type\",()=>pm.expect(pm.response.headers.get(\"Content-Type\")).to.match(/^image\\/(jpeg|png|webp)$/));",
+                  "pm.test(\"nosniff\",()=>pm.expect(pm.response.headers.get(\"X-Content-Type-Options\")).to.eql(\"nosniff\"));",
+                  "pm.test(\"immutable cache\",()=>pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"immutable\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}{{imageUrl}}",
+              "host": [
+                "{{baseUrl}}{{imageUrl}}"
+              ]
+            },
+            "description": "ไม่ต้องล็อกอิน. {{imageUrl}} มาจาก Upload Images (เช่น /api/v1/public/event-images/<id>). ใช้ได้เฉพาะงานที่ไม่ใช่ draft (draft ตอบ 404 IMAGE_NOT_FOUND) — Create Event ใน collection นี้ใช้ status open"
+          }
+        },
+        {
+          "name": "Public Image File - unknown id (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\",()=>pm.response.to.have.status(404));",
+                  "const b=pm.response.json();",
+                  "pm.test(\"body.statusCode 404\",()=>pm.expect(b.statusCode).to.eql(404));",
+                  "pm.test(\"IMAGE_NOT_FOUND\",()=>pm.expect(b.error.code).to.eql(\"IMAGE_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/event-images/000000000000000000000000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public",
+                "event-images",
+                "000000000000000000000000"
+              ]
+            },
+            "description": "id ที่ไม่มีอยู่ → 404 IMAGE_NOT_FOUND (envelope ปกติ)"
+          }
+        },
+        {
+          "name": "Delete Image",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "const b=pm.response.json();",
+                  "pm.test(\"body.statusCode 200\",()=>pm.expect(b.statusCode).to.eql(200));",
+                  "pm.test(\"data null\",()=>pm.expect(b.data).to.eql(null));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/{{eventId}}/images/{{imageId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "{{eventId}}",
+                "images",
+                "{{imageId}}"
+              ]
+            },
+            "description": "super_admin เท่านั้น. ลบรูปและไฟล์ในดิสก์ ตอบ 200 data: null (ไฟล์หายไปแล้วก็ยังตอบ 200). ลบซ้ำ 404 IMAGE_NOT_FOUND"
           }
         }
       ]

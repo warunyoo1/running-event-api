@@ -26,6 +26,8 @@ const schema = z.object({
   LOGIN_RATE_MAX: z.coerce.number().int().positive().default(10),
   PUBLIC_RATE_MAX: z.coerce.number().int().positive().default(120),
   ORDER_RATE_MAX: z.coerce.number().int().positive().default(20),
+  UPLOAD_RATE_MAX: z.coerce.number().int().positive().default(20),
+  IMAGE_RATE_MAX: z.coerce.number().int().positive().default(600),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -12,6 +12,9 @@ export const objectId = z
   .string()
   .refine((v) => mongoose.isValidObjectId(v), "invalid id");
 
+export const imageParams = z.object({ id: objectId, imageId: objectId });
+export const publicImageParam = z.object({ imageId: objectId });
+
 export const pageQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -36,3 +39,5 @@ export function flattenZod(error: ZodError): FieldErrors {
 export type IdParams = z.infer<typeof objectIdParam>;
 export type OrderNoParams = z.infer<typeof orderNoParam>;
 export type SlugParams = z.infer<typeof slugParam>;
+export type ImageParams = z.infer<typeof imageParams>;
+export type PublicImageParams = z.infer<typeof publicImageParam>;

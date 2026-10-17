@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import multer from "multer";
 import { ZodError } from "zod";
 import {
+  EVENT_IMAGE_MAX_FILES_PER_REQUEST,
   HTTP_STATUS,
   RETRY_AFTER_UNAVAILABLE_SEC,
   STATUS_MESSAGE,
@@ -73,7 +74,7 @@ const make = (
 ): Resolved => ({ status, code, message, ...(fields ? { fields } : {}) });
 
 /** Pure mapping from any thrown value to status + error body. Unknown errors become a generic 500. */
-function resolveError(err: unknown): Resolved {
+export function resolveError(err: unknown): Resolved {
   if (err instanceof ApiError)
     return make(err.status, err.code, err.message, err.fields);
   if (err instanceof ZodError)
@@ -89,6 +90,12 @@ function resolveError(err: unknown): Resolved {
         HTTP_STATUS.PAYLOAD_TOO_LARGE,
         "FILE_TOO_LARGE",
         "ไฟล์ใหญ่เกินกำหนด",
+      );
+    if (err.code === "LIMIT_FILE_COUNT")
+      return make(
+        HTTP_STATUS.UNPROCESSABLE_ENTITY,
+        "TOO_MANY_FILES",
+        `อัปโหลดได้ครั้งละไม่เกิน ${EVENT_IMAGE_MAX_FILES_PER_REQUEST} ไฟล์`,
       );
     return make(
       HTTP_STATUS.BAD_REQUEST,

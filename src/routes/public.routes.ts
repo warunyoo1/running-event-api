@@ -1,12 +1,21 @@
 import { Router } from "express";
+import * as eventImages from "../controllers/admin-event-image.controller";
 import * as events from "../controllers/public-event.controller";
 import * as orders from "../controllers/public-order.controller";
 import { requireContentType } from "../middlewares/content-type";
 import { addMethodNotAllowed } from "../middlewares/method-not-allowed";
-import { orderLimiter, publicLimiter } from "../middlewares/rate-limit";
+import {
+  imageLimiter,
+  orderLimiter,
+  publicLimiter,
+} from "../middlewares/rate-limit";
 import { uploadSlip } from "../middlewares/upload";
 import { validate } from "../middlewares/validate";
-import { orderNoParam, slugParam } from "../validators/common.validator";
+import {
+  orderNoParam,
+  publicImageParam,
+  slugParam,
+} from "../validators/common.validator";
 import { publicEventsQuery } from "../validators/event.validator";
 import {
   createOrderBody,
@@ -15,6 +24,14 @@ import {
 } from "../validators/order.validator";
 
 export const publicRoutes = Router();
+// Image bytes: own (looser) limiter, registered before the shared public limiter.
+publicRoutes.get(
+  "/event-images/:imageId",
+  imageLimiter,
+  validate({ params: publicImageParam }),
+  eventImages.publicFile,
+);
+
 publicRoutes.use(publicLimiter);
 
 publicRoutes.get(

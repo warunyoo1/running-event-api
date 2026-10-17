@@ -14,6 +14,11 @@ import type {
   PublicEventsQuery,
 } from "../validators/event.validator";
 import { audit } from "./audit.service";
+import {
+  adminImages,
+  publicImages,
+  type StoredImage,
+} from "./event-image.service";
 import { QUOTA_HOLDING } from "./order-state";
 
 const eventNotFound = () =>
@@ -39,15 +44,16 @@ async function racesByEvent(eventIds: Types.ObjectId[]) {
   return groupBy(races, (r) => String(r.eventId));
 }
 
-type LeanEvent = { _id: Types.ObjectId };
+type LeanEvent = { _id: Types.ObjectId; images?: readonly StoredImage[] | null };
 
 /** Event fields + its race views (public and admin share this shape). */
 const eventWithRaces = <T extends LeanEvent>(
   e: T,
   races: Map<string, RaceLean[]>,
 ) => ({
-  ...withId(e),
+  ...withId(e, ["images"]),
   races: (races.get(String(e._id)) ?? []).map(raceView),
+  images: publicImages(e),
 });
 
 /** Admin view: event fields + number of quota-holding orders + race views. */
@@ -56,9 +62,10 @@ const adminEventView = <T extends LeanEvent>(
   races: Map<string, RaceLean[]>,
   orderCounts: Map<string, number>,
 ) => ({
-  ...withId(e),
+  ...withId(e, ["images"]),
   orderCount: orderCounts.get(String(e._id)) ?? 0,
   races: (races.get(String(e._id)) ?? []).map(raceView),
+  images: adminImages(e),
 });
 
 export async function listPublic(f: PublicEventsQuery) {

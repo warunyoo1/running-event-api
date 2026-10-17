@@ -11,6 +11,7 @@
 1. **Health** ตรวจว่า API ขึ้น
 2. **Auth > Login** (ต้องทำก่อนกลุ่ม Admin ทั้งหมด)
 3. **Admin - Events > Create Event** สร้างงาน เก็บ `eventSlug`, `eventId` ให้อัตโนมัติ
+3.1 **Event images** (ต้องล็อกอิน super_admin และมี `eventId`) เลือกไฟล์ JPG/PNG/WEBP ในช่อง `files` ของ **Upload Images** แล้วรันตามลำดับ: Upload > List > Patch > Reorder > Admin file > Public file > Delete (เก็บ `imageId`, `imageId2`, `imageUrl` ให้อัตโนมัติ)
 4. **Public - Events** ดูรายการ/รายละเอียดงาน
 5. **Public - Orders > Create Order** เก็บ `orderNo`, `phoneLast4` ให้อัตโนมัติ แล้ว **Find Order**
 6. **Public - Orders > Upload Slip** ต้องเลือกไฟล์รูปในช่อง `slip` เอง
