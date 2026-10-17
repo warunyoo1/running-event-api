@@ -7,8 +7,19 @@ import {
   saveSlip,
 } from "../utils/slip-file";
 import { withTransaction } from "../utils/transaction";
-import { loadByOrderNoAndPhone } from "./order.service";
+import {
+  isOverduePending,
+  loadByOrderNoAndPhone,
+} from "./order/order-public.service";
 import { statusesBefore } from "./order-state";
+
+const SLIP_NOT_FOUND = () =>
+  ApiError.notFound("ไม่พบสลิป", "SLIP_NOT_FOUND");
+const CANNOT_UPLOAD = () =>
+  ApiError.conflict(
+    "INVALID_STATE",
+    "ออเดอร์นี้ไม่สามารถอัปโหลดสลิปได้ในสถานะปัจจุบัน",
+  );
 
 export async function submitSlip(
   orderNo: string,
@@ -25,20 +36,10 @@ export async function submitSlip(
       "รองรับเฉพาะไฟล์ JPG, PNG หรือ WEBP",
     );
 
-  if (
-    order.status === "expired" ||
-    (order.status === "pending" &&
-      order.expiresAt &&
-      order.expiresAt.getTime() < Date.now())
-  ) {
+  if (order.status === "expired" || isOverduePending(order))
     throw ApiError.conflict("ORDER_EXPIRED", "ออเดอร์หมดอายุแล้ว");
-  }
   const from = statusesBefore("slip_uploaded");
-  if (!from.includes(order.status))
-    throw ApiError.conflict(
-      "INVALID_STATE",
-      "ออเดอร์นี้ไม่สามารถอัปโหลดสลิปได้ในสถานะปัจจุบัน",
-    );
+  if (!from.includes(order.status)) throw CANNOT_UPLOAD();
 
   const name = await saveSlip(file.buffer, kind.ext);
   try {
@@ -51,11 +52,7 @@ export async function submitSlip(
         },
         { session },
       );
-      if (res.modifiedCount === 0)
-        throw ApiError.conflict(
-          "INVALID_STATE",
-          "ออเดอร์นี้ไม่สามารถอัปโหลดสลิปได้ในสถานะปัจจุบัน",
-        );
+      if (res.modifiedCount === 0) throw CANNOT_UPLOAD();
       await Payment.updateMany(
         { orderId: order._id, status: "submitted" },
         { $set: { status: "superseded" } },
@@ -84,13 +81,13 @@ export async function submitSlip(
 /** Resolve a payment's slip to a safe on-disk path. */
 export async function getSlipFile(paymentId: string) {
   const payment = await Payment.findById(paymentId).lean();
-  if (!payment) throw ApiError.notFound("ไม่พบสลิป", "SLIP_NOT_FOUND");
+  if (!payment) throw SLIP_NOT_FOUND();
   try {
     return {
       fullPath: resolveSlipPath(payment.slipPath),
       mime: payment.slipMime,
     };
   } catch {
-    throw ApiError.notFound("ไม่พบสลิป", "SLIP_NOT_FOUND");
+    throw SLIP_NOT_FOUND();
   }
 }

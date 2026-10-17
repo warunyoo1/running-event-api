@@ -1,30 +1,39 @@
+import { EXPORT_LIMIT } from "../config/constants";
 import { Order } from "../models";
-import type { AdminOrdersQuery } from "../validators/admin.validator";
-import * as orderService from "./order.service";
+import { toCsv } from "../utils/csv";
+import type {
+  ExportOrdersQuery,
+  ExportParticipantsQuery,
+  ExportShippingQuery,
+} from "../validators/admin.validator";
+import { adminFilter, decorateOrders } from "./order/order-admin.service";
 import * as participantService from "./participant.service";
 import * as shippingService from "./shipping.service";
-import { toCsv } from "../utils/csv";
-import { bangkokRange } from "../utils/date-range";
-import { escapeRegex } from "../utils/pagination";
 
 const iso = (d?: Date | null) => (d ? new Date(d).toISOString() : "");
 
-export async function ordersCsv(
-  q: Omit<AdminOrdersQuery, "page" | "pageSize">,
-) {
-  const filter: Record<string, unknown> = {};
-  if (q.eventId) filter.eventId = q.eventId;
-  if (q.status) filter.status = q.status;
-  const range = bangkokRange(q.from, q.to);
-  if (range) filter.createdAt = range;
-  if (q.q) {
-    const re = new RegExp(escapeRegex(q.q), "i");
-    filter.$or = [{ orderNo: re }, { contactName: re }, { contactPhone: re }];
-  }
-  const orders = await orderService.decorateOrders(
-    await Order.find(filter)
+type FulfillmentOrder = Awaited<
+  ReturnType<typeof shippingService.listForExport>
+>[number];
+
+const addressLine = (o: FulfillmentOrder) =>
+  o.address
+    ? [
+        o.address.street,
+        o.address.subdistrict,
+        o.address.district,
+        o.address.province,
+        o.address.postalCode,
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "";
+
+export async function ordersCsv(q: ExportOrdersQuery) {
+  const orders = await decorateOrders(
+    await Order.find(adminFilter(q))
       .sort({ createdAt: -1 })
-      .limit(participantService.EXPORT_LIMIT)
+      .limit(EXPORT_LIMIT)
       .lean(),
   );
   return toCsv([
@@ -44,7 +53,7 @@ export async function ordersCsv(
       "createdAt",
       "paidAt",
     ],
-    ...orders.map((o: any) => [
+    ...orders.map((o) => [
       o.orderNo,
       o.eventName,
       o.contactName,
@@ -63,12 +72,7 @@ export async function ordersCsv(
   ]);
 }
 
-export async function participantsCsv(f: {
-  eventId?: string;
-  q?: string;
-  race?: string;
-  status?: string;
-}) {
+export async function participantsCsv(f: ExportParticipantsQuery) {
   const rows = await participantService.listForExport(f);
   return toCsv([
     [
@@ -94,7 +98,7 @@ export async function participantsCsv(f: {
       "emergencyName",
       "emergencyPhone",
     ],
-    ...rows.map((p: any) => [
+    ...rows.map((p) => [
       p.orderNo,
       p.orderStatus,
       p.firstName,
@@ -120,23 +124,8 @@ export async function participantsCsv(f: {
   ]);
 }
 
-export async function fulfillmentCsv(f: {
-  eventId?: string;
-  method?: "pickup" | "shipping";
-}) {
+export async function fulfillmentCsv(f: ExportShippingQuery) {
   const orders = await shippingService.listForExport(f);
-  const a = (o: any) =>
-    o.address
-      ? [
-          o.address.street,
-          o.address.subdistrict,
-          o.address.district,
-          o.address.province,
-          o.address.postalCode,
-        ]
-          .filter(Boolean)
-          .join(" ")
-      : "";
   return toCsv([
     [
       "orderNo",
@@ -158,7 +147,7 @@ export async function fulfillmentCsv(f: {
         o.contactName,
         o.contactPhone,
         o.delivery,
-        a(o),
+        addressLine(o),
         o.trackingProvider ?? "",
         o.trackingNo ?? "",
         p.name,

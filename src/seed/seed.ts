@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { MS_PER_HOUR, type OrderStatus, type Role } from "../config/constants";
 import { connectDatabase, disconnectDatabase } from "../config/database";
 import { env } from "../config/env";
 import { EventModel, Order, Participant, Payment, Race, User, syncAllIndexes } from "../models";
@@ -32,7 +33,10 @@ export function loadSeedConfig(): SeedConfig {
   };
 }
 
-async function ensureUser(name: string, email: string, password: string, role: "super_admin" | "reviewer" | "viewer") {
+// Seeded orders in these statuses get a placeholder slip + payment.
+const STATUSES_WITH_SLIP: readonly OrderStatus[] = ["slip_uploaded", "paid", "rejected"];
+
+async function ensureUser(name: string, email: string, password: string, role: Role) {
   const existing = await User.findOne({ email });
   if (existing) return { user: existing, created: false };
   const user = await User.create({ name, email, role, active: true, passwordHash: await bcrypt.hash(password, env.BCRYPT_COST) });
@@ -64,12 +68,12 @@ async function seedOrders(reviewerId?: string) {
       orderNo: o.orderNo, eventId: event._id, contactName: o.contactName, contactPhone: o.phone, delivery: o.delivery,
       address: o.delivery === "shipping" ? { street: "99 ถนนตัวอย่าง", subdistrict: "สวนหลวง", district: "สวนหลวง", province: "กรุงเทพมหานคร", postalCode: "10250" } : undefined,
       subtotal, shippingFee, amount: subtotal + shippingFee, status: o.status,
-      expiresAt: o.status === "pending" ? new Date(Date.now() + env.ORDER_EXPIRE_HOURS * 3600_000) : new Date(o.createdAt.getTime() + env.ORDER_EXPIRE_HOURS * 3600_000),
+      expiresAt: o.status === "pending" ? new Date(Date.now() + env.ORDER_EXPIRE_HOURS * MS_PER_HOUR) : new Date(o.createdAt.getTime() + env.ORDER_EXPIRE_HOURS * MS_PER_HOUR),
       raceCounts: [{ raceId: race._id, count: o.participants.length }],
       rejectionReason: o.rejectionReason,
       ...(o.status === "paid" ? { transactionRef: o.transactionRef, paidAt: o.createdAt } : {}),
       ...(reviewed ? { reviewedAt: o.createdAt, reviewedBy: reviewerId } : {}),
-      ...(["slip_uploaded", "paid", "rejected"].includes(o.status) ? { slipUploadedAt: o.createdAt } : {}),
+      ...(STATUSES_WITH_SLIP.includes(o.status) ? { slipUploadedAt: o.createdAt } : {}),
       createdAt: o.createdAt,
     });
     await Participant.insertMany(o.participants.map((p) => ({
@@ -77,7 +81,7 @@ async function seedOrders(reviewerId?: string) {
       firstName: p.firstName, lastName: p.lastName, gender: "ไม่ระบุ", birthDate: "1990-01-01", nationality: "ไทย",
       declineIdentity: true, phone: o.phone, province: "กรุงเทพมหานคร", applicantType: "บุคคลทั่วไป", size: p.size, bibNo: p.bibNo,
     })));
-    if (["slip_uploaded", "paid", "rejected"].includes(o.status)) {
+    if (STATUSES_WITH_SLIP.includes(o.status)) {
       const file = `seed-${o.orderNo}.png`;
       await writeFile(path.join(slipDir, file), TINY_PNG);
       await Payment.create({

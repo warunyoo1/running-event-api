@@ -1,14 +1,35 @@
 import type { FilterQuery, Types } from "mongoose";
+import { EXPORT_LIMIT } from "../config/constants";
 import { Order, Participant } from "../models";
 import type { ParticipantDoc } from "../models/participant.model";
 import { ApiError } from "../utils/api-error";
+import { maskLast4 } from "../utils/crypto";
+import { withId } from "../utils/lean";
 import { escapeRegex, pageMeta, skipOf } from "../utils/pagination";
+import type {
+  ExportParticipantsQuery,
+  ParticipantsQuery,
+  PatchParticipantBody,
+} from "../validators/admin.validator";
 import { audit } from "./audit.service";
-import { maskedParticipant } from "./order.service";
 
-type Filters = { eventId?: string; q?: string; race?: string; status?: string };
+type LeanParticipant = {
+  _id: Types.ObjectId;
+  orderId: Types.ObjectId;
+  idNumberEnc?: string | null;
+  idLast4?: string | null;
+  declineIdentity?: boolean | null;
+};
 
-async function buildFilter(f: Filters): Promise<FilterQuery<ParticipantDoc>> {
+/** Admin view of a lean participant: never exposes the encrypted ID, only its last 4 digits. */
+export const maskedParticipant = <T extends LeanParticipant>(p: T) => ({
+  ...withId(p, ["idNumberEnc", "idLast4"]),
+  idNumber: p.declineIdentity ? "" : maskLast4(p.idLast4),
+});
+
+async function buildFilter(
+  f: ExportParticipantsQuery,
+): Promise<FilterQuery<ParticipantDoc>> {
   const filter: FilterQuery<ParticipantDoc> = {};
   if (f.eventId) filter.eventId = f.eventId;
   if (f.race) filter.raceName = f.race;
@@ -39,7 +60,7 @@ async function buildFilter(f: Filters): Promise<FilterQuery<ParticipantDoc>> {
   return filter;
 }
 
-async function withOrders(rows: Array<Record<string, any>>) {
+async function withOrders<T extends LeanParticipant>(rows: T[]) {
   const orders = await Order.find({ _id: { $in: rows.map((r) => r.orderId) } })
     .select("orderNo status delivery")
     .lean();
@@ -54,7 +75,7 @@ async function withOrders(rows: Array<Record<string, any>>) {
   });
 }
 
-export async function list(q: Filters & { page: number; pageSize: number }) {
+export async function list(q: ParticipantsQuery) {
   const filter = await buildFilter(q);
   const [rows, total] = await Promise.all([
     Participant.find(filter)
@@ -67,8 +88,7 @@ export async function list(q: Filters & { page: number; pageSize: number }) {
   return { data: await withOrders(rows), meta: pageMeta(q, total) };
 }
 
-export const EXPORT_LIMIT = 50_000;
-export async function listForExport(f: Filters) {
+export async function listForExport(f: ExportParticipantsQuery) {
   const rows = await Participant.find(await buildFilter(f))
     .sort({ createdAt: -1, _id: 1 })
     .limit(EXPORT_LIMIT)
@@ -79,7 +99,7 @@ export async function listForExport(f: Filters) {
 export async function patch(
   actorId: string,
   id: string,
-  body: { collected?: boolean; bibNo?: string | null },
+  body: PatchParticipantBody,
 ) {
   const participant = await Participant.findById(id);
   if (!participant)
@@ -112,5 +132,3 @@ export async function patch(
   const fresh = await Participant.findById(id).lean();
   return (await withOrders([fresh!]))[0];
 }
-
-export type { Types };

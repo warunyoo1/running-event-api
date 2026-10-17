@@ -16,6 +16,12 @@ export function signToken(userId: string): string {
   });
 }
 
+/** Lifetime of a signed token (exp - iat) in ms, so the cookie never outlives JWT_EXPIRES_IN. */
+function tokenLifetimeMs(token: string): number {
+  const { iat = 0, exp = 0 } = jwt.decode(token) as jwt.JwtPayload;
+  return (exp - iat) * 1000;
+}
+
 export async function login(email: string, password: string) {
   const user = await User.findOne({ email });
   const ok = await bcrypt.compare(password, user?.passwordHash ?? dummyHash);
@@ -28,7 +34,8 @@ export async function login(email: string, password: string) {
   user.lastLoginAt = new Date();
   await user.save();
   await audit(String(user._id), "auth.login", "User", String(user._id));
-  return { token: signToken(String(user._id)), user: user.toJSON() };
+  const token = signToken(String(user._id));
+  return { token, maxAgeMs: tokenLifetimeMs(token), user: user.toJSON() };
 }
 
 export async function getMe(userId: string) {

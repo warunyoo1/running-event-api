@@ -1,21 +1,47 @@
-import type { FilterQuery } from "mongoose";
+import type { FilterQuery, UpdateQuery } from "mongoose";
 import { Order, Payment } from "../models";
 import type { OrderDoc } from "../models/order.model";
 import { ApiError } from "../utils/api-error";
 import { pageMeta, skipOf } from "../utils/pagination";
 import { withTransaction } from "../utils/transaction";
+import type { SlipsQuery } from "../validators/admin.validator";
 import { audit } from "./audit.service";
-import { getAdmin } from "./order.service";
+import { findOrderOr404, getAdmin } from "./order/order-admin.service";
+
+const APPROVE_INVALID_STATE = "อนุมัติได้เฉพาะออเดอร์ที่รอตรวจสลิป";
+const REJECT_INVALID_STATE = "ปฏิเสธได้เฉพาะออเดอร์ที่รอตรวจสลิป";
+
+/**
+ * Applies a slip review in one transaction: moves the order out of `slip_uploaded`
+ * (INVALID_STATE if it already left) and updates its latest submitted payment.
+ */
+async function reviewSlip(
+  id: string,
+  orderUpdate: UpdateQuery<OrderDoc>,
+  paymentSet: Record<string, unknown>,
+  invalidStateMessage: string,
+) {
+  await withTransaction(async (session) => {
+    const res = await Order.updateOne(
+      { _id: id, status: "slip_uploaded" },
+      orderUpdate,
+      { session },
+    );
+    if (res.modifiedCount === 0)
+      throw ApiError.conflict("INVALID_STATE", invalidStateMessage);
+    await Payment.findOneAndUpdate(
+      { orderId: id, status: "submitted" },
+      { $set: paymentSet },
+      { session, sort: { createdAt: -1 } },
+    );
+  });
+}
 
 export async function approve(actorId: string, id: string, rawRef: string) {
   const transactionRef = rawRef.trim().toUpperCase(); // normalised so case variants can't bypass duplicate check
-  const order = await Order.findById(id).select("status");
-  if (!order) throw ApiError.notFound("ไม่พบออเดอร์", "ORDER_NOT_FOUND");
+  const order = await findOrderOr404(id, "status");
   if (order.status !== "slip_uploaded")
-    throw ApiError.conflict(
-      "INVALID_STATE",
-      "อนุมัติได้เฉพาะออเดอร์ที่รอตรวจสลิป",
-    );
+    throw ApiError.conflict("INVALID_STATE", APPROVE_INVALID_STATE);
   if (
     await Order.exists({ status: "paid", transactionRef, _id: { $ne: id } })
   ) {
@@ -25,88 +51,35 @@ export async function approve(actorId: string, id: string, rawRef: string) {
     );
   }
   const now = new Date();
-  await withTransaction(async (session) => {
-    const res = await Order.updateOne(
-      { _id: id, status: "slip_uploaded" },
-      {
-        $set: {
-          status: "paid",
-          paidAt: now,
-          transactionRef,
-          reviewedBy: actorId,
-          reviewedAt: now,
-        },
-        $unset: { rejectionReason: "" },
-      },
-      { session },
-    );
-    if (res.modifiedCount === 0)
-      throw ApiError.conflict(
-        "INVALID_STATE",
-        "อนุมัติได้เฉพาะออเดอร์ที่รอตรวจสลิป",
-      );
-    await Payment.findOneAndUpdate(
-      { orderId: id, status: "submitted" },
-      {
-        $set: {
-          status: "approved",
-          transactionRef,
-          reviewedBy: actorId,
-          reviewedAt: now,
-        },
-      },
-      { session, sort: { createdAt: -1 } },
-    );
-  });
+  const reviewed = { reviewedBy: actorId, reviewedAt: now };
+  await reviewSlip(
+    id,
+    {
+      $set: { status: "paid", paidAt: now, transactionRef, ...reviewed },
+      $unset: { rejectionReason: "" },
+    },
+    { status: "approved", transactionRef, ...reviewed },
+    APPROVE_INVALID_STATE,
+  );
   await audit(actorId, "order.approve", "Order", id, { transactionRef });
   return getAdmin(id);
 }
 
 export async function reject(actorId: string, id: string, reason: string) {
-  const order = await Order.findById(id).select("status");
-  if (!order) throw ApiError.notFound("ไม่พบออเดอร์", "ORDER_NOT_FOUND");
+  await findOrderOr404(id, "status");
   const now = new Date();
-  await withTransaction(async (session) => {
-    const res = await Order.updateOne(
-      { _id: id, status: "slip_uploaded" },
-      {
-        $set: {
-          status: "rejected",
-          rejectionReason: reason,
-          reviewedBy: actorId,
-          reviewedAt: now,
-        },
-      },
-      { session },
-    );
-    if (res.modifiedCount === 0)
-      throw ApiError.conflict(
-        "INVALID_STATE",
-        "ปฏิเสธได้เฉพาะออเดอร์ที่รอตรวจสลิป",
-      );
-    await Payment.findOneAndUpdate(
-      { orderId: id, status: "submitted" },
-      {
-        $set: {
-          status: "rejected",
-          rejectReason: reason,
-          reviewedBy: actorId,
-          reviewedAt: now,
-        },
-      },
-      { session, sort: { createdAt: -1 } },
-    );
-  });
+  const reviewed = { reviewedBy: actorId, reviewedAt: now };
+  await reviewSlip(
+    id,
+    { $set: { status: "rejected", rejectionReason: reason, ...reviewed } },
+    { status: "rejected", rejectReason: reason, ...reviewed },
+    REJECT_INVALID_STATE,
+  );
   await audit(actorId, "order.reject", "Order", id, { reason });
   return getAdmin(id);
 }
 
-export async function listSlips(q: {
-  page: number;
-  pageSize: number;
-  eventId?: string;
-  tab: "waiting" | "history";
-}) {
+export async function listSlips(q: SlipsQuery) {
   const filter: FilterQuery<OrderDoc> =
     q.tab === "waiting"
       ? { status: "slip_uploaded" }
@@ -128,6 +101,7 @@ export async function listSlips(q: {
   })
     .sort({ createdAt: -1 })
     .lean();
+  // Payments are newest first, so the first one seen per order is its latest.
   const latest = new Map<string, (typeof payments)[number]>();
   for (const p of payments)
     if (!latest.has(String(p.orderId))) latest.set(String(p.orderId), p);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { orderStatuses } from "../config/constants";
+import { deliveryMethods, orderStatuses } from "../config/constants";
 import { objectId, optStr, pageQuery } from "./common.validator";
 
 const emptyToUndef = (v: unknown) => (v === "" ? undefined : v);
@@ -11,28 +11,33 @@ const optDate = z.preprocess(
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
 );
+const optOrderStatus = z.preprocess(
+  emptyToUndef,
+  z.enum(orderStatuses).optional(),
+);
+const withoutPaging = { page: true, pageSize: true } as const;
 
 export const adminOrdersQuery = pageQuery.extend({
   eventId: optObjectId,
-  status: z.preprocess(emptyToUndef, z.enum(orderStatuses).optional()),
+  status: optOrderStatus,
   q: optStr,
   from: optDate,
   to: optDate,
 });
 export type AdminOrdersQuery = z.infer<typeof adminOrdersQuery>;
-export const exportOrdersQuery = adminOrdersQuery.omit({
-  page: true,
-  pageSize: true,
-});
+export const exportOrdersQuery = adminOrdersQuery.omit(withoutPaging);
+export type ExportOrdersQuery = z.infer<typeof exportOrdersQuery>;
 
 export const cancelBody = z.object({
   reason: z.string().trim().max(500).optional(),
 });
+export type CancelBody = z.infer<typeof cancelBody>;
 
 export const trackingBody = z.object({
   trackingProvider: z.string().trim().min(1, "กรุณากรอกขนส่ง").max(100),
   trackingNo: z.string().trim().min(1, "กรุณากรอกเลขพัสดุ").max(100),
 });
+export type TrackingBody = z.infer<typeof trackingBody>;
 
 export const approveBody = z.object({
   transactionRef: z
@@ -42,6 +47,7 @@ export const approveBody = z.object({
     .max(64)
     .regex(/^[A-Za-z0-9\-_/.]+$/, "เลขอ้างอิงใช้ได้เฉพาะ A-Z a-z 0-9 - _ / ."),
 });
+export type ApproveBody = z.infer<typeof approveBody>;
 
 export const rejectBody = z.object({
   reason: z
@@ -50,22 +56,23 @@ export const rejectBody = z.object({
     .min(1, "กรุณากรอกเหตุผล")
     .max(500),
 });
+export type RejectBody = z.infer<typeof rejectBody>;
 
 export const slipsQuery = pageQuery.extend({
   eventId: optObjectId,
   tab: z.enum(["waiting", "history"]).default("waiting"),
 });
+export type SlipsQuery = z.infer<typeof slipsQuery>;
 
 export const participantsQuery = pageQuery.extend({
   eventId: optObjectId,
   q: optStr,
   race: optStr,
-  status: z.preprocess(emptyToUndef, z.enum(orderStatuses).optional()),
+  status: optOrderStatus,
 });
-export const exportParticipantsQuery = participantsQuery.omit({
-  page: true,
-  pageSize: true,
-});
+export type ParticipantsQuery = z.infer<typeof participantsQuery>;
+export const exportParticipantsQuery = participantsQuery.omit(withoutPaging);
+export type ExportParticipantsQuery = z.infer<typeof exportParticipantsQuery>;
 
 export const patchParticipantBody = z
   .object({
@@ -73,24 +80,28 @@ export const patchParticipantBody = z
     bibNo: z.string().trim().min(1).max(20).nullable().optional(),
   })
   .strict();
+export type PatchParticipantBody = z.infer<typeof patchParticipantBody>;
 
 export const shippingQuery = pageQuery.extend({
   eventId: optObjectId,
-  method: z.preprocess(emptyToUndef, z.enum(["pickup", "shipping"]).optional()),
+  method: z.preprocess(emptyToUndef, z.enum(deliveryMethods).optional()),
 });
-export const exportShippingQuery = shippingQuery.omit({
-  page: true,
-  pageSize: true,
-});
+export type ShippingQuery = z.infer<typeof shippingQuery>;
+export const exportShippingQuery = shippingQuery.omit(withoutPaging);
+export type ExportShippingQuery = z.infer<typeof exportShippingQuery>;
 
 export const dashboardQuery = z.object({ eventId: optObjectId });
+export type DashboardQuery = z.infer<typeof dashboardQuery>;
 
 export const summaryQuery = z.object({
   eventId: optObjectId,
   from: optDate,
   to: optDate,
 });
+export type SummaryQuery = z.infer<typeof summaryQuery>;
+
 export const shirtSizesQuery = z.object({
   eventId: optObjectId,
   status: z.preprocess(emptyToUndef, z.enum(orderStatuses).default("paid")),
 });
+export type ShirtSizesQuery = z.infer<typeof shirtSizesQuery>;

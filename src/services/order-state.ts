@@ -1,5 +1,4 @@
 import type { OrderStatus } from "../config/constants";
-import { ApiError } from "../utils/api-error";
 
 /** Single source of truth for the order state machine. */
 export const transitions: Record<OrderStatus, readonly OrderStatus[]> = {
@@ -27,12 +26,3 @@ export const QUOTA_HOLDING: readonly OrderStatus[] = [
   "paid",
   "rejected",
 ];
-export const NOT_RELEASED_STATUSES = QUOTA_HOLDING;
-
-export function assertTransition(from: OrderStatus, to: OrderStatus) {
-  if (!canTransition(from, to))
-    throw ApiError.conflict(
-      "INVALID_STATE",
-      `ไม่สามารถเปลี่ยนสถานะจาก ${from} เป็น ${to} ได้`,
-    );
-}

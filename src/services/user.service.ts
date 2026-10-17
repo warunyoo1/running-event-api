@@ -2,29 +2,20 @@ import bcrypt from "bcryptjs";
 import { env } from "../config/env";
 import { User } from "../models";
 import { ApiError } from "../utils/api-error";
+import type {
+  CreateUserBody,
+  UpdateUserBody,
+} from "../validators/user.validator";
 import { audit } from "./audit.service";
 
-type Patch = {
-  name?: string;
-  role?: "super_admin" | "reviewer" | "viewer";
-  active?: boolean;
-  password?: string;
-};
+const LAST_SUPER_ADMIN_MSG = "ต้องมี super_admin ที่ใช้งานอยู่อย่างน้อย 1 คน";
 
 export async function list() {
   const users = await User.find().sort({ createdAt: 1 });
   return users.map((u) => u.toJSON());
 }
 
-export async function create(
-  actorId: string,
-  input: {
-    name: string;
-    email: string;
-    password: string;
-    role: "super_admin" | "reviewer" | "viewer";
-  },
-) {
+export async function create(actorId: string, input: CreateUserBody) {
   if (await User.exists({ email: input.email }))
     throw ApiError.conflict("EMAIL_TAKEN", "อีเมลนี้ถูกใช้แล้ว");
   const user = await User.create({
@@ -46,7 +37,11 @@ const activeSupers = (excludeId?: string) =>
     ...(excludeId ? { _id: { $ne: excludeId } } : {}),
   });
 
-export async function update(actorId: string, id: string, patch: Patch) {
+export async function update(
+  actorId: string,
+  id: string,
+  patch: UpdateUserBody,
+) {
   const user = await User.findById(id);
   if (!user) throw ApiError.notFound("ไม่พบผู้ใช้", "USER_NOT_FOUND");
 
@@ -55,9 +50,8 @@ export async function update(actorId: string, id: string, patch: Patch) {
     (patch.role ?? user.role) === "super_admin" &&
     (patch.active ?? user.active);
   const losesSuper = wasActiveSuper && !willBeActiveSuper;
-  const guardMsg = "ต้องมี super_admin ที่ใช้งานอยู่อย่างน้อย 1 คน";
   if (losesSuper && (await activeSupers(id)) === 0)
-    throw ApiError.conflict("LAST_SUPER_ADMIN", guardMsg);
+    throw ApiError.conflict("LAST_SUPER_ADMIN", LAST_SUPER_ADMIN_MSG);
 
   const before = {
     name: user.name,
@@ -76,7 +70,7 @@ export async function update(actorId: string, id: string, patch: Patch) {
   if (losesSuper && (await activeSupers()) === 0) {
     user.set(before);
     await user.save();
-    throw ApiError.conflict("LAST_SUPER_ADMIN", guardMsg);
+    throw ApiError.conflict("LAST_SUPER_ADMIN", LAST_SUPER_ADMIN_MSG);
   }
   await audit(actorId, "user.update", "User", id, {
     fields: Object.keys(patch).filter((k) => k !== "password"),

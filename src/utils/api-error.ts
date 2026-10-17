@@ -11,9 +11,6 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 
-  static badRequest(message: string, code = "BAD_REQUEST") {
-    return new ApiError(400, code, message);
-  }
   static unauthorized(message = "กรุณาเข้าสู่ระบบ") {
     return new ApiError(401, "UNAUTHORIZED", message);
   }

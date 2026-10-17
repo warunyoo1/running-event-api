@@ -1,23 +1,23 @@
-import type { FilterQuery } from "mongoose";
+import type { ClientSession, FilterQuery, Types } from "mongoose";
+import { PUBLIC_EVENT_STATUSES } from "../config/constants";
 import { EventModel, Order, Race } from "../models";
 import type { EventDoc } from "../models/event.model";
+import type { RaceLean } from "../models/race.model";
 import { ApiError } from "../utils/api-error";
+import { groupBy } from "../utils/collections";
+import { withId } from "../utils/lean";
 import { escapeRegex, pageMeta, skipOf } from "../utils/pagination";
 import { withTransaction } from "../utils/transaction";
-import { bangkokToday } from "../validators/common.validator";
-import type { EventBody } from "../validators/event.validator";
+import type {
+  AdminEventsQuery,
+  EventBody,
+  PublicEventsQuery,
+} from "../validators/event.validator";
 import { audit } from "./audit.service";
 import { QUOTA_HOLDING } from "./order-state";
 
-type RaceLean = {
-  _id: unknown;
-  name: string;
-  price: number;
-  quota: number;
-  reserved: number;
-  start?: string | null;
-  sortOrder: number;
-};
+const eventNotFound = () =>
+  ApiError.notFound("ไม่พบงานวิ่ง", "EVENT_NOT_FOUND");
 
 const raceView = (r: RaceLean) => ({
   id: String(r._id),
@@ -28,37 +28,43 @@ const raceView = (r: RaceLean) => ({
   remaining: Math.max(0, r.quota - r.reserved),
 });
 
-async function racesByEvent(eventIds: unknown[]) {
-  const races = await Race.find({ eventId: { $in: eventIds }, active: true })
+/** Active races per event id, in display order. */
+async function racesByEvent(eventIds: Types.ObjectId[]) {
+  const races: RaceLean[] = await Race.find({
+    eventId: { $in: eventIds },
+    active: true,
+  })
     .sort({ sortOrder: 1 })
     .lean();
-  const map = new Map<string, RaceLean[]>();
-  for (const r of races) {
-    const key = String(r.eventId);
-    map.set(key, [...(map.get(key) ?? []), r as unknown as RaceLean]);
-  }
-  return map;
+  return groupBy(races, (r) => String(r.eventId));
 }
 
-const eventView = (e: { _id: unknown } & Partial<EventDoc>) => {
-  const { _id, ...rest } = e as Record<string, unknown>;
-  delete rest.__v;
-  return { id: String(_id), ...rest };
-};
+type LeanEvent = { _id: Types.ObjectId };
 
-const PUBLIC_STATUSES = ["open", "closed", "upcoming"];
+/** Event fields + its race views (public and admin share this shape). */
+const eventWithRaces = <T extends LeanEvent>(
+  e: T,
+  races: Map<string, RaceLean[]>,
+) => ({
+  ...withId(e),
+  races: (races.get(String(e._id)) ?? []).map(raceView),
+});
 
-export async function listPublic(f: {
-  q?: string;
-  province?: string;
-  month?: string;
-  distance?: string;
-  category?: string;
-  status?: string;
-}) {
+/** Admin view: event fields + number of quota-holding orders + race views. */
+const adminEventView = <T extends LeanEvent>(
+  e: T,
+  races: Map<string, RaceLean[]>,
+  orderCounts: Map<string, number>,
+) => ({
+  ...withId(e),
+  orderCount: orderCounts.get(String(e._id)) ?? 0,
+  races: (races.get(String(e._id)) ?? []).map(raceView),
+});
+
+export async function listPublic(f: PublicEventsQuery) {
   const filter: FilterQuery<EventDoc> = {
     archived: false,
-    status: { $in: PUBLIC_STATUSES },
+    status: { $in: [...PUBLIC_EVENT_STATUSES] },
   };
   if (f.status) filter.status = f.status;
   if (f.province) filter.province = f.province;
@@ -77,28 +83,22 @@ export async function listPublic(f: {
   }
   const events = await EventModel.find(filter).sort({ date: 1 }).lean();
   const races = await racesByEvent(events.map((e) => e._id));
-  return events.map((e) => ({
-    ...eventView(e),
-    races: (races.get(String(e._id)) ?? []).map(raceView),
-  }));
+  return events.map((e) => eventWithRaces(e, races));
 }
 
 export async function getPublicBySlug(slug: string) {
   const e = await EventModel.findOne({
     slug: slug.toLowerCase(),
     archived: false,
-    status: { $in: PUBLIC_STATUSES },
+    status: { $in: [...PUBLIC_EVENT_STATUSES] },
   }).lean();
-  if (!e) throw ApiError.notFound("ไม่พบงานวิ่ง", "EVENT_NOT_FOUND");
-  const races = await racesByEvent([e._id]);
-  return {
-    ...eventView(e),
-    races: (races.get(String(e._id)) ?? []).map(raceView),
-  };
+  if (!e) throw eventNotFound();
+  return eventWithRaces(e, await racesByEvent([e._id]));
 }
 
-async function activeOrderCounts(eventIds: unknown[]) {
-  const rows = await Order.aggregate<{ _id: unknown; n: number }>([
+/** Quota-holding orders per event id. */
+async function activeOrderCounts(eventIds: Types.ObjectId[]) {
+  const rows = await Order.aggregate<{ _id: Types.ObjectId; n: number }>([
     {
       $match: {
         eventId: { $in: eventIds },
@@ -110,12 +110,7 @@ async function activeOrderCounts(eventIds: unknown[]) {
   return new Map(rows.map((r) => [String(r._id), r.n]));
 }
 
-export async function listAdmin(q: {
-  page: number;
-  pageSize: number;
-  q?: string;
-  status?: string;
-}) {
+export async function listAdmin(q: AdminEventsQuery) {
   const filter: FilterQuery<EventDoc> = { archived: false };
   if (q.status) filter.status = q.status;
   if (q.q) filter.name = new RegExp(escapeRegex(q.q), "i");
@@ -132,26 +127,18 @@ export async function listAdmin(q: {
     racesByEvent(ids),
     activeOrderCounts(ids),
   ]);
-  const data = events.map((e) => ({
-    ...eventView(e),
-    orderCount: counts.get(String(e._id)) ?? 0,
-    races: (races.get(String(e._id)) ?? []).map(raceView),
-  }));
+  const data = events.map((e) => adminEventView(e, races, counts));
   return { data, meta: pageMeta(q, total) };
 }
 
 export async function getAdmin(id: string) {
   const e = await EventModel.findOne({ _id: id, archived: false }).lean();
-  if (!e) throw ApiError.notFound("ไม่พบงานวิ่ง", "EVENT_NOT_FOUND");
+  if (!e) throw eventNotFound();
   const [races, counts] = await Promise.all([
     racesByEvent([e._id]),
     activeOrderCounts([e._id]),
   ]);
-  return {
-    ...eventView(e),
-    orderCount: counts.get(String(e._id)) ?? 0,
-    races: (races.get(String(e._id)) ?? []).map(raceView),
-  };
+  return adminEventView(e, races, counts);
 }
 
 function eventFields(body: EventBody) {
@@ -159,9 +146,10 @@ function eventFields(body: EventBody) {
   return fields;
 }
 
+const slugTaken = () => ApiError.conflict("SLUG_TAKEN", "slug นี้ถูกใช้แล้ว");
+
 export async function create(actorId: string, body: EventBody) {
-  if (await EventModel.exists({ slug: body.slug }))
-    throw ApiError.conflict("SLUG_TAKEN", "slug นี้ถูกใช้แล้ว");
+  if (await EventModel.exists({ slug: body.slug })) throw slugTaken();
   const id = await withTransaction(async (session) => {
     const [event] = await EventModel.create([eventFields(body)], { session });
     await Race.create(
@@ -181,35 +169,40 @@ export async function create(actorId: string, body: EventBody) {
   return getAdmin(id);
 }
 
-export async function update(actorId: string, id: string, body: EventBody) {
-  const event = await EventModel.findOne({ _id: id, archived: false });
-  if (!event) throw ApiError.notFound("ไม่พบงานวิ่ง", "EVENT_NOT_FOUND");
-  if (
-    body.slug !== event.slug &&
-    (await EventModel.exists({ slug: body.slug, _id: { $ne: id } }))
-  ) {
-    throw ApiError.conflict("SLUG_TAKEN", "slug นี้ถูกใช้แล้ว");
-  }
+const quotaBelowReserved = (i: number) =>
+  ApiError.validation({
+    [`races.${i}.quota`]: "โควตาต้องไม่น้อยกว่าจำนวนที่จองแล้ว",
+  });
 
-  const existing = await Race.find({ eventId: id });
+/**
+ * Applies the race list of an event update inside `session`. The order/quota checks run in the
+ * same transaction as the writes, so a concurrent order cannot slip in between check and write
+ * (every touched race is written here, so a concurrent reservation hits a write conflict and retries).
+ */
+async function updateRaces(
+  id: string,
+  races: EventBody["races"],
+  session: ClientSession,
+) {
+  const existing = await Race.find({ eventId: id }, null, { session });
   const hasOrders = !!(await Order.exists({
     eventId: id,
     status: { $in: [...QUOTA_HOLDING] },
-  }));
+  }).session(session));
 
   // Match incoming races to existing ones: by id when given, otherwise by name (also revives inactive races).
   const byId = new Map(existing.map((r) => [String(r._id), r]));
   const byName = new Map(existing.map((r) => [r.name, r]));
-  const matched = body.races.map((r) =>
+  const matched = races.map((r) =>
     r.id ? byId.get(r.id) : byName.get(r.name),
   );
-  if (body.races.some((r, i) => r.id && !matched[i]))
+  if (races.some((r, i) => r.id && !matched[i]))
     throw ApiError.validation({ races: "ไม่พบระยะที่ระบุ" });
   const keptIds = new Set(matched.filter(Boolean).map((r) => String(r!._id)));
 
   if (hasOrders) {
     const locked = (msg: string) => ApiError.conflict("EVENT_HAS_ORDERS", msg);
-    body.races.forEach((r, i) => {
+    races.forEach((r, i) => {
       const m = matched[i];
       if (m && m.active && (m.price !== r.price || m.quota !== r.quota))
         throw locked("มีออเดอร์แล้ว ไม่สามารถแก้ราคาหรือโควตาของระยะได้");
@@ -219,39 +212,58 @@ export async function update(actorId: string, id: string, body: EventBody) {
     if (existing.some((r) => r.active && !keptIds.has(String(r._id))))
       throw locked("มีออเดอร์แล้ว ไม่สามารถลบระยะได้");
   }
-  for (const [i, r] of body.races.entries()) {
+  races.forEach((r, i) => {
     const m = matched[i];
-    if (m && r.quota < m.reserved)
-      throw ApiError.validation({
-        [`races.${i}.quota`]: "โควตาต้องไม่น้อยกว่าจำนวนที่จองแล้ว",
-      });
+    if (m && r.quota < m.reserved) throw quotaBelowReserved(i);
+  });
+
+  // Deactivate removed races (only reachable when there are no active orders).
+  await Race.updateMany(
+    { eventId: id, _id: { $nin: [...keptIds] } },
+    { $set: { active: false } },
+    { session },
+  );
+  for (const [i, r] of races.entries()) {
+    const m = matched[i];
+    const set = {
+      name: r.name,
+      price: r.price,
+      quota: r.quota,
+      start: r.start,
+      sortOrder: i,
+      active: true,
+    };
+    if (!m) {
+      await Race.create([{ eventId: id, ...set }], { session });
+      continue;
+    }
+    // The reserved filter keeps quota >= reserved atomic with the write.
+    const res = await Race.updateOne(
+      { _id: m._id, reserved: { $lte: r.quota } },
+      { $set: set },
+      { session },
+    );
+    if (res.matchedCount === 0) throw quotaBelowReserved(i);
+  }
+}
+
+export async function update(actorId: string, id: string, body: EventBody) {
+  const event = await EventModel.findOne({ _id: id, archived: false });
+  if (!event) throw eventNotFound();
+  if (
+    body.slug !== event.slug &&
+    (await EventModel.exists({ slug: body.slug, _id: { $ne: id } }))
+  ) {
+    throw slugTaken();
   }
 
   await withTransaction(async (session) => {
+    await updateRaces(id, body.races, session);
     await EventModel.updateOne(
       { _id: id },
       { $set: eventFields(body) },
       { session },
     );
-    // Deactivate removed races (only reachable when there are no active orders).
-    await Race.updateMany(
-      { eventId: id, _id: { $nin: [...keptIds] } },
-      { $set: { active: false } },
-      { session },
-    );
-    for (const [i, r] of body.races.entries()) {
-      const m = matched[i];
-      const set = {
-        name: r.name,
-        price: r.price,
-        quota: r.quota,
-        start: r.start,
-        sortOrder: i,
-        active: true,
-      };
-      if (m) await Race.updateOne({ _id: m._id }, { $set: set }, { session });
-      else await Race.create([{ eventId: id, ...set }], { session });
-    }
   });
   await audit(actorId, "event.update", "Event", id, { slug: body.slug });
   return getAdmin(id);

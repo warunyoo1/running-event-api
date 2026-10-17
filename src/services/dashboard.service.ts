@@ -31,6 +31,7 @@ export async function get(eventId?: string) {
     totalOrders: Object.values(orders).reduce((a, b) => a + b, 0),
     pendingReview: orders.slip_uploaded,
     paidRevenue: revenueRows[0]?.revenue ?? 0,
+    // Seats held by quota-holding orders (pending/slip_uploaded/rejected included, not just paid).
     participants: races.reduce((a, r) => a + r.reserved, 0),
     races: races.map((r) => ({
       raceId: String(r._id),

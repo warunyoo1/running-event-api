@@ -32,6 +32,8 @@ const orderSchema = new Schema(
     paidAt: { type: Date },
     slipUploadedAt: { type: Date },
     raceCounts: [{ _id: false, raceId: { type: Schema.Types.ObjectId, ref: "Race" }, count: Number }],
+    // Guards the exactly-once quota release. Old documents lack it, so every guard uses { $ne: true }.
+    quotaReleased: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

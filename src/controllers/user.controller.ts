@@ -1,16 +1,29 @@
 import type { Request, Response } from "express";
+import { validatedBody, validatedParams } from "../middlewares/validate";
 import * as userService from "../services/user.service";
 import { created, ok } from "../utils/response";
+import type { IdParams } from "../validators/common.validator";
+import type {
+  CreateUserBody,
+  UpdateUserBody,
+} from "../validators/user.validator";
 
 export async function list(_req: Request, res: Response) {
   ok(res, await userService.list());
 }
 export async function create(req: Request, res: Response) {
-  created(res, await userService.create(req.user!.id, req.body));
+  created(
+    res,
+    await userService.create(req.user!.id, validatedBody<CreateUserBody>(req)),
+  );
 }
 export async function update(req: Request, res: Response) {
   ok(
     res,
-    await userService.update(req.user!.id, res.locals.params.id, req.body),
+    await userService.update(
+      req.user!.id,
+      validatedParams<IdParams>(res).id,
+      validatedBody<UpdateUserBody>(req),
+    ),
   );
 }

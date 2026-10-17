@@ -1,29 +1,48 @@
-import type { FilterQuery } from "mongoose";
+import type { FilterQuery, Types } from "mongoose";
+import { EXPORT_LIMIT } from "../config/constants";
 import { Order, Participant } from "../models";
 import type { OrderDoc } from "../models/order.model";
+import { groupBy } from "../utils/collections";
 import { pageMeta, skipOf } from "../utils/pagination";
+import type {
+  ExportShippingQuery,
+  ShippingQuery,
+} from "../validators/admin.validator";
 
-type Q = { eventId?: string; method?: "pickup" | "shipping" };
+type Address = {
+  street?: string | null;
+  subdistrict?: string | null;
+  district?: string | null;
+  province?: string | null;
+  postalCode?: string | null;
+};
 
-function filterOf(q: Q): FilterQuery<OrderDoc> {
+type LeanOrder = {
+  _id: Types.ObjectId;
+  eventId: Types.ObjectId;
+  orderNo: string;
+  contactName: string;
+  contactPhone: string;
+  delivery: string;
+  address?: Address | null;
+  trackingProvider?: string | null;
+  trackingNo?: string | null;
+};
+
+function filterOf(q: ExportShippingQuery): FilterQuery<OrderDoc> {
   const f: FilterQuery<OrderDoc> = { status: "paid" };
   if (q.eventId) f.eventId = q.eventId;
   if (q.method) f.delivery = q.method;
   return f;
 }
 
-async function build(orders: Array<Record<string, any>>) {
+async function build(orders: LeanOrder[]) {
   const participants = await Participant.find({
     orderId: { $in: orders.map((o) => o._id) },
   })
     .sort({ _id: 1 })
     .lean();
-  const byOrder = new Map<string, typeof participants>();
-  for (const p of participants)
-    byOrder.set(String(p.orderId), [
-      ...(byOrder.get(String(p.orderId)) ?? []),
-      p,
-    ]);
+  const byOrder = groupBy(participants, (p) => String(p.orderId));
   return orders.map((o) => {
     const ps = byOrder.get(String(o._id)) ?? [];
     return {
@@ -49,7 +68,7 @@ async function build(orders: Array<Record<string, any>>) {
   });
 }
 
-export async function list(q: Q & { page: number; pageSize: number }) {
+export async function list(q: ShippingQuery) {
   const filter = filterOf(q);
   const [orders, total] = await Promise.all([
     Order.find(filter)
@@ -62,11 +81,11 @@ export async function list(q: Q & { page: number; pageSize: number }) {
   return { data: await build(orders), meta: pageMeta(q, total) };
 }
 
-export async function listForExport(q: Q) {
+export async function listForExport(q: ExportShippingQuery) {
   return build(
     await Order.find(filterOf(q))
       .sort({ paidAt: 1, _id: 1 })
-      .limit(50_000)
+      .limit(EXPORT_LIMIT)
       .lean(),
   );
 }

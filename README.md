@@ -12,18 +12,38 @@ API หลังบ้านสำหรับระบบรับสมัค�
 
 ```
 src/
-  server.ts            เริ่มระบบ: ต่อ DB, sync index, เปิด port, เริ่ม job หมดอายุออเดอร์
-  app.ts               ประกอบ Express (helmet, cors, cookie, json, routes, error handler)
-  config/              env (Zod), database, constants (ไซส์เสื้อ, จังหวัด, status)
-  routes/              กำหนด endpoint + middleware เท่านั้น
-  controllers/         อ่าน request → เรียก service → จัดรูป response
-  services/            business logic ทั้งหมด (order, review, event, report ...)
-  models/              Mongoose schema + index
-  validators/          Zod schema และกฎตรวจข้อมูลที่พอร์ตจาก registration.ts
-  middlewares/         auth/role, upload, validate, error handler, rate limit, origin check
-  utils/               api-error, crypto (AES-256-GCM), csv, slip-file (magic bytes), transaction ฯลฯ
-  seed/                seed.ts + seed-data.ts
+  server.ts              เริ่มระบบ: ต่อ DB, sync index, เปิด port, เริ่ม job หมดอายุออเดอร์
+  app.ts                 ประกอบ Express (helmet, cors, cookie, json, routes, error handler)
+  config/
+    env.ts               ตรวจ env ด้วย Zod (ค่าไม่ครบ = start ไม่ขึ้น)
+    database.ts          ต่อ MongoDB
+    constants.ts         ค่าคงที่ทั้งหมด: status, role, ไซส์เสื้อ, จังหวัด, EXPORT_LIMIT, EXPIRY_* ฯลฯ
+  routes/                กำหนด path + middleware (auth, role, validate) แล้วส่งต่อ controller เท่านั้น
+    index.ts             mount /health, /api/v1/public, /api/v1/admin
+    public.routes.ts / admin.routes.ts / health.routes.ts
+  controllers/           อ่าน input ที่ validate แล้ว → เรียก service → ok()/created() ไม่มี business logic
+  services/              business logic ทั้งหมด
+    order.service.ts     barrel ให้ controller import (re-export จาก services/order/*)
+    order/
+      order-create.service.ts   สร้างออเดอร์ฝั่ง public (checkout)
+      order-public.service.ts   ค้นหาออเดอร์ด้วย orderNo + phoneLast4
+      order-admin.service.ts    list/detail/cancel/tracking ของแอดมิน, adminFilter, findOrderOr404
+      order-quota.ts            จอง/คืนโควตา (ใช้ร่วมกันทั้ง create, cancel, expiry)
+    order-state.ts       state machine ของสถานะออเดอร์
+    event / review / slip / participant / shipping / dashboard / report / export / user / auth / audit / expiry
+  models/                Mongoose schema + index + type lean (เช่น RaceLean), index.ts รวม export ทุก model
+  validators/            Zod schema ของ body/query/params พร้อม export type z.infer ของทุก schema
+  middlewares/           auth/role, upload, validate (+ validatedParams/Query/Body), error handler, rate limit, origin check
+  utils/
+    api-error.ts         ApiError (notFound, conflict, validation ...) ให้ errorHandler แปลงเป็น JSON
+    response.ts          ok() / created()
+    lean.ts              withId(): แปลงผล .lean() ให้ได้ { id, ...rest } แบบเดียวกับ toJSON
+    collections.ts       groupBy()
+    date-range.ts, pagination.ts, transaction.ts (withTransaction), crypto.ts (AES-256-GCM), csv.ts, slip-file.ts ฯลฯ
+  seed/                  seed.ts + seed-data.ts
 ```
+
+ทิศทาง dependency คือ `routes → controllers → services → models` service ห้าม import controller และ controller ห้ามแตะ model โดยตรง
 
 ## ความต้องการ
 
@@ -73,7 +93,33 @@ npm run seed                    # events 6 งาน + super admin (+ ออเ�
 npm run dev                     # http://localhost:4000/health
 ```
 
-คำสั่ง npm: `dev`, `build`, `start`, `typecheck`, `seed`
+| คำสั่ง | ทำอะไร |
+|---|---|
+| `npm run dev` | รัน `src/server.ts` ด้วย tsx แบบ watch (reload เมื่อแก้ไฟล์) |
+| `npm run typecheck` | `tsc --noEmit` ตรวจ type ทั้งโปรเจกต์ |
+| `npm run build` | compile ไป `dist/` (`tsconfig.build.json`) |
+| `npm start` | รัน `dist/server.js` (ต้อง build ก่อน) |
+| `npm run seed` | สร้าง/อัปเดต super admin และข้อมูลตัวอย่าง (รันซ้ำได้) |
+
+ก่อนเปิด PR ให้รัน `npm run typecheck && npm run build` (CI ก็รันสองคำสั่งนี้เหมือนกัน) โปรเจกต์ยังไม่มี test อัตโนมัติ
+
+### ใช้ MongoDB จาก docker-compose ตอน dev
+
+`docker-compose.yml` มี service `mongo` เป็น single-node replica set `rs0` (healthcheck สั่ง `rs.initiate` ให้เอง) แต่ไม่ได้ publish port ออกมาที่ host ถ้าจะรัน `npm run dev` บนเครื่องโดยใช้ mongo ตัวนี้ ให้สร้างไฟล์ `docker-compose.override.yml` บนเครื่องตัวเอง (อย่า commit):
+
+```yaml
+services:
+  mongo:
+    ports:
+      - "127.0.0.1:27017:27017"
+```
+
+```bash
+docker compose up -d mongo      # รอจน docker compose ps ขึ้น healthy
+```
+
+แล้วตั้ง `.env` เป็น `MONGODB_URI=mongodb://localhost:27017/running_event?directConnection=true`
+(member ของ replica set ลงทะเบียนไว้เป็น `mongo:27017` ซึ่ง host หาไม่เจอ ถ้าใช้ `?replicaSet=rs0` จาก host จะต่อไม่ได้ `directConnection=true` ต่อเข้า primary ตรงๆ และใช้ transaction ได้ตามปกติ)
 
 ## รันด้วย Docker Compose
 
@@ -158,6 +204,72 @@ workflow: `.github/workflows/ci-cd.yml`
 | `TRUST_PROXY` | `1` เมื่ออยู่หลัง caddy (`docker-compose.prod.yml` ใช้ `1` เป็นค่าเริ่มต้นอยู่แล้ว ตั้ง `0` ถ้าไม่ใช้ caddy) |
 
 `MONGODB_URI`, `PORT` และ `UPLOAD_DIR` ถูกกำหนดใน `docker-compose.prod.yml` อยู่แล้ว ข้อมูล mongo และสลิปเก็บใน volume `mongo_data` และ `uploads`
+
+## เพิ่ม endpoint / module ใหม่
+
+ตัวอย่างนี้เพิ่ม `GET /api/v1/admin/things` (แอดมินทุก role อ่านได้) ใช้ลำดับ model → validator → service → controller → route
+
+1. Model (`src/models/thing.model.ts`) แล้ว export จาก `src/models/index.ts` และเพิ่มเข้าไปใน `syncAllIndexes`
+
+   ```ts
+   import { Schema, model, type InferSchemaType, type Types } from "mongoose";
+   import { cleanJson } from "./plugins";
+   const thingSchema = new Schema(
+     { eventId: { type: Schema.Types.ObjectId, ref: "Event", required: true }, name: { type: String, required: true, trim: true } },
+     { timestamps: true },
+   );
+   cleanJson(thingSchema); // toJSON: _id → id, ตัด __v
+   export type ThingDoc = InferSchemaType<typeof thingSchema>;
+   export type ThingLean = ThingDoc & { _id: Types.ObjectId };
+   export const Thing = model("Thing", thingSchema);
+   ```
+   ดู `race.model.ts` เป็นตัวอย่าง (plugin `cleanJson`, index, `RaceLean`)
+
+2. Validator (`src/validators/admin.validator.ts` หรือไฟล์ใหม่) ให้ export ทั้ง schema และ type ทุกครั้ง
+
+   ```ts
+   export const thingsQuery = pageQuery.extend({ eventId: optObjectId });
+   export type ThingsQuery = z.infer<typeof thingsQuery>;
+   ```
+
+3. Service (`src/services/thing.service.ts`) ใส่ business logic ทั้งหมดไว้ที่นี่ รับ type จาก validator ถ้าไม่เจอข้อมูลหรือข้อมูลผิด ให้ throw `ApiError` (ไม่ต้องจัดการ `res`)
+
+   ```ts
+   export async function list(q: ThingsQuery) {
+     const filter = q.eventId ? { eventId: q.eventId } : {};
+     const [rows, total] = await Promise.all([
+       Thing.find(filter).sort({ createdAt: -1 }).skip(skipOf(q)).limit(q.pageSize).lean(),
+       Thing.countDocuments(filter),
+     ]);
+     return { data: rows.map((r) => withId(r)), meta: pageMeta(q, total) };
+   }
+   ```
+   - ถ้าใช้ `.lean()` ให้แปลงด้วย `withId()` เสมอ เพื่อให้ response ได้ `id` แทน `_id` เหมือน endpoint อื่น
+   - ถ้าเขียนหลาย collection หรือมีการแก้โควตา ให้ห่อด้วย `withTransaction` (`utils/transaction.ts`)
+   - ค่าคงที่ใหม่ (limit, status, ข้อความที่ใช้ซ้ำ) ให้ไปใส่ใน `config/constants.ts`
+   - list แบบแบ่งหน้าใช้ `pageQuery` + `skipOf`/`pageMeta` (`utils/pagination.ts`) เพื่อให้ `meta` มีรูปแบบเดียวกันทุก endpoint
+
+4. Controller (`src/controllers/admin-thing.controller.ts`) ให้บางที่สุด อ่าน input ที่ผ่าน validate แล้ว → เรียก service → ส่ง `ok()`/`created()`
+
+   ```ts
+   export async function list(_req: Request, res: Response) {
+     const { data, meta } = await thingService.list(validatedQuery<ThingsQuery>(res));
+     ok(res, data, meta);
+   }
+   ```
+   Express 5 ส่ง promise ที่ reject ต่อให้ `errorHandler` เอง ไม่ต้องใส่ try/catch
+   `T` ของ `validatedParams/Query/Body<T>()` ต้องเป็น type `z.infer` ของ schema ที่ใส่ใน `validate()` ของ route นั้น (helper นี้เป็นแค่ cast ถ้าเปลี่ยน schema ต้องเปลี่ยน `T` ด้วย)
+
+5. Route (`src/routes/admin.routes.ts`) ใส่สิทธิ์และ validate ที่นี่
+
+   ```ts
+   adminRoutes.get("/things", read, validate({ query: v.thingsQuery }), things.list);
+   ```
+   ใช้ `read` (ทุก role), `write` (super_admin + reviewer) หรือ `requireRole(...SUPER_ONLY)` route ฝั่ง admin ที่ประกาศหลัง `adminRoutes.use(requireAuth)` ต้องล็อกอินก่อนทุกตัว ถ้าเป็น module ใหม่ทั้งชุดให้สร้าง router แยกแล้ว mount ใน `routes/index.ts`
+
+6. รัน `npm run typecheck && npm run build` แล้วเพิ่ม endpoint ใหม่ลงในตาราง Endpoints ด้านล่าง
+
+ถ้า service ไฟล์ไหนใหญ่จนรวมหลายหน้าที่ ให้แยกแบบ `services/order/` แล้วเหลือไฟล์เดิมไว้เป็น barrel เพื่อจะได้ไม่ต้องแก้ import ใน controller
 
 ## รูปแบบ response
 

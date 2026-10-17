@@ -33,12 +33,6 @@ export function flattenZod(error: ZodError): FieldErrors {
   return fields;
 }
 
-/** Today in Asia/Bangkok as YYYY-MM-DD. */
-export function bangkokToday(now = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Bangkok",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-}
+export type IdParams = z.infer<typeof objectIdParam>;
+export type OrderNoParams = z.infer<typeof orderNoParam>;
+export type SlugParams = z.infer<typeof slugParam>;

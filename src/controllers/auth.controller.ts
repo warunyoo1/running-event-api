@@ -1,8 +1,13 @@
 import type { CookieOptions, Request, Response } from "express";
 import { COOKIE_NAME } from "../config/constants";
 import { env } from "../config/env";
+import { validatedBody } from "../middlewares/validate";
 import * as authService from "../services/auth.service";
 import { ok } from "../utils/response";
+import type {
+  ChangePasswordBody,
+  LoginBody,
+} from "../validators/auth.validator";
 
 const cookieOptions = (): CookieOptions => ({
   httpOnly: true,
@@ -12,11 +17,9 @@ const cookieOptions = (): CookieOptions => ({
 });
 
 export async function login(req: Request, res: Response) {
-  const { token, user } = await authService.login(
-    req.body.email,
-    req.body.password,
-  );
-  res.cookie(COOKIE_NAME, token, { ...cookieOptions(), maxAge: 8 * 3600_000 });
+  const { email, password } = validatedBody<LoginBody>(req);
+  const { token, maxAgeMs, user } = await authService.login(email, password);
+  res.cookie(COOKIE_NAME, token, { ...cookieOptions(), maxAge: maxAgeMs });
   ok(res, user);
 }
 
@@ -30,10 +33,8 @@ export async function me(req: Request, res: Response) {
 }
 
 export async function changePassword(req: Request, res: Response) {
-  await authService.changePassword(
-    req.user!.id,
-    req.body.currentPassword,
-    req.body.newPassword,
-  );
+  const { currentPassword, newPassword } =
+    validatedBody<ChangePasswordBody>(req);
+  await authService.changePassword(req.user!.id, currentPassword, newPassword);
   res.status(204).end();
 }

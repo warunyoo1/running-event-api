@@ -8,7 +8,7 @@ import {
   shirtSizes,
 } from "../config/constants";
 import type { FieldErrors } from "../utils/api-error";
-import { bangkokToday } from "./common.validator";
+import { bangkokToday } from "../utils/date-range";
 
 export const cleanPhone = (value: string) => value.replace(/[\s()-]/g, "");
 const validPhone = (value: string) =>
@@ -171,10 +171,12 @@ export function validateOrderInput(
   return errors;
 }
 
-export const findOrderQuery = z.object({
-  phoneLast4: z.string().regex(/^\d{4}$/, "กรุณากรอกเบอร์โทรศัพท์ 4 หลักท้าย"),
-});
+const phoneLast4 = z
+  .string()
+  .regex(/^\d{4}$/, "กรุณากรอกเบอร์โทรศัพท์ 4 หลักท้าย");
 
-export const slipBody = z.object({
-  phoneLast4: z.string().regex(/^\d{4}$/, "กรุณากรอกเบอร์โทรศัพท์ 4 หลักท้าย"),
-});
+export const findOrderQuery = z.object({ phoneLast4 });
+export type FindOrderQuery = z.infer<typeof findOrderQuery>;
+
+export const slipBody = z.object({ phoneLast4 });
+export type SlipBody = z.infer<typeof slipBody>;

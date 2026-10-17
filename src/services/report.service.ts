@@ -2,13 +2,13 @@ import { Types } from "mongoose";
 import { shirtSizes } from "../config/constants";
 import { EventModel, Order, Participant } from "../models";
 import { bangkokRange } from "../utils/date-range";
+import type {
+  ShirtSizesQuery,
+  SummaryQuery,
+} from "../validators/admin.validator";
 import { QUOTA_HOLDING } from "./order-state";
 
-export async function summary(q: {
-  eventId?: string;
-  from?: string;
-  to?: string;
-}) {
+export async function summary(q: SummaryQuery) {
   const orderMatch: Record<string, unknown> = {};
   if (q.eventId) orderMatch.eventId = new Types.ObjectId(q.eventId);
   const range = bangkokRange(q.from, q.to);
@@ -86,7 +86,7 @@ export async function summary(q: {
   };
 }
 
-export async function shirtSizeReport(q: { eventId?: string; status: string }) {
+export async function shirtSizeReport(q: ShirtSizesQuery) {
   const rows = await Participant.aggregate<{
     _id: { race: string; size: string };
     n: number;

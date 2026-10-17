@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+  PUBLIC_EVENT_STATUSES,
+  TIME_HHMM,
   eventCategories,
   eventStatuses,
   eventThemes,
@@ -22,10 +24,7 @@ const raceBody = z.object({
     .number()
     .int("โควตาต้องเป็นจำนวนเต็ม")
     .min(1, "โควตาต้องอย่างน้อย 1"),
-  start: z
-    .string()
-    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "เวลาต้องเป็น HH:mm")
-    .optional(),
+  start: z.string().regex(TIME_HHMM, "เวลาต้องเป็น HH:mm").optional(),
 });
 
 export const eventBody = z
@@ -81,9 +80,10 @@ export const publicEventsQuery = z.object({
   ),
   status: z.preprocess(
     (v) => (v === "" ? undefined : v),
-    z.enum(["open", "closed", "upcoming"]).optional(),
+    z.enum(PUBLIC_EVENT_STATUSES).optional(),
   ),
 });
+export type PublicEventsQuery = z.infer<typeof publicEventsQuery>;
 
 export const adminEventsQuery = pageQuery.extend({
   q: optStr,
@@ -92,3 +92,4 @@ export const adminEventsQuery = pageQuery.extend({
     z.enum(eventStatuses).optional(),
   ),
 });
+export type AdminEventsQuery = z.infer<typeof adminEventsQuery>;

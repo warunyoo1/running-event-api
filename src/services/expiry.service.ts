@@ -1,6 +1,7 @@
+import { EXPIRY_BATCH_SIZE, EXPIRY_INTERVAL_MS } from "../config/constants";
 import { Order } from "../models";
 import { withTransaction } from "../utils/transaction";
-import { transitionAndRelease } from "./order.service";
+import { transitionAndRelease } from "./order/order-quota";
 
 /** Expires overdue `pending` orders and releases their quota. Slip-uploaded orders never auto-expire. */
 export async function expireOverdue(now = new Date()): Promise<number> {
@@ -9,25 +10,30 @@ export async function expireOverdue(now = new Date()): Promise<number> {
     expiresAt: { $lt: now },
   })
     .select("_id")
-    .limit(500)
+    .limit(EXPIRY_BATCH_SIZE)
     .lean();
   let expired = 0;
   for (const o of overdue) {
-    const done = await withTransaction((session) =>
-      transitionAndRelease(
-        { _id: o._id, status: "pending", expiresAt: { $lt: now } },
-        "expired",
-        {},
-        session,
-      ),
-    );
-    if (done) expired++;
+    try {
+      const done = await withTransaction((session) =>
+        transitionAndRelease(
+          { _id: o._id, status: "pending", expiresAt: { $lt: now } },
+          "expired",
+          {},
+          session,
+        ),
+      );
+      if (done) expired++;
+    } catch (err) {
+      // One broken order (e.g. a quota invariant violation) must not block the rest of the batch.
+      console.error(`expiry failed for order ${String(o._id)}`, err);
+    }
   }
   return expired;
 }
 
 let running = false;
-export function startExpiryJob(intervalMs = 60_000) {
+export function startExpiryJob(intervalMs = EXPIRY_INTERVAL_MS) {
   const timer = setInterval(async () => {
     if (running) return;
     running = true;

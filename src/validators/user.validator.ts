@@ -12,6 +12,7 @@ export const createUserBody = z.object({
   password,
   role: z.enum(roles),
 });
+export type CreateUserBody = z.infer<typeof createUserBody>;
 
 export const updateUserBody = z
   .object({
@@ -21,3 +22,4 @@ export const updateUserBody = z
     password: password.optional(),
   })
   .strict();
+export type UpdateUserBody = z.infer<typeof updateUserBody>;

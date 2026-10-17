@@ -165,7 +165,7 @@ adminRoutes.get(
 adminRoutes.get(
   "/export/fulfillment.csv",
   read,
-  validate({ query: v.exportShippingQuery.omit({}) }),
+  validate({ query: v.exportShippingQuery }),
   exports_.fulfillment,
 );
 
