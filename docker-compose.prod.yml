@@ -17,9 +17,11 @@ services:
       TRUST_PROXY: ${TRUST_PROXY:-1}
     volumes:
       - uploads:/app/uploads
-    # เฉพาะ loopback ของ server (nginx เข้าถึง api ผ่าน 127.0.0.1)
+    # ชั่วคราว: เปิดพอร์ตออก IP ตรงๆ เพื่อทดสอบก่อนต่อ nginx/HTTPS
+    # คำเตือน: ยังไม่มี HTTPS ตอนนี้ ข้อมูลที่ส่ง (รวม cookie ตอน login แอดมิน) ไม่ได้เข้ารหัส
+    # เมื่อเชื่อม nginx เสร็จแล้ว ให้เปลี่ยนกลับเป็น "127.0.0.1:${API_HOST_PORT:-4000}:4000"
     ports:
-      - "127.0.0.1:${API_HOST_PORT:-4000}:4000"
+      - "${API_HOST_PORT:-4000}:4000"
     networks:
       - mongodb_network
 networks:
