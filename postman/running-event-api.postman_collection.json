@@ -1,0 +1,1772 @@
+{
+  "info": {
+    "name": "Running Event API",
+    "description": "Postman collection ของ Running Event API. Admin ใช้ JWT ใน httpOnly cookie (rr_admin_token) ที่ตั้งโดย Login อัตโนมัติผ่าน cookie jar ของ Postman. Response ทุกอัน: { data, meta? }",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000"
+    },
+    {
+      "key": "eventSlug",
+      "value": ""
+    },
+    {
+      "key": "eventId",
+      "value": ""
+    },
+    {
+      "key": "orderNo",
+      "value": ""
+    },
+    {
+      "key": "phoneLast4",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    },
+    {
+      "key": "participantId",
+      "value": ""
+    },
+    {
+      "key": "targetUserId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "ตรวจสถานะ API (ไม่ต้อง login)"
+          }
+        },
+        {
+          "name": "Health (versioned)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health"
+              ]
+            },
+            "description": "เหมือน /health แต่อยู่ใต้ /api/v1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "const d=pm.response.json().data||{};",
+                  "if(d.id) pm.collectionVariables.set('userId',d.id);",
+                  "if(d.role) pm.collectionVariables.set('role',d.role);",
+                  "pm.test('cookie rr_admin_token set',()=>pm.expect(pm.cookies.has('rr_admin_token')).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login ด้วยอีเมล/รหัสผ่าน server จะตั้ง cookie rr_admin_token (httpOnly) ให้ Postman เก็บใน cookie jar อัตโนมัติ มี rate limit"
+          }
+        },
+        {
+          "name": "Me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "ข้อมูลผู้ใช้ปัจจุบัน"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public - Events",
+      "item": [
+        {
+          "name": "List Events",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/events?q=&province=&month=2030-12&distance=&category=fun&status=open",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "province",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "month",
+                  "value": "2030-12",
+                  "disabled": true
+                },
+                {
+                  "key": "distance",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "category",
+                  "value": "fun",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "open",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "รายการงานที่เปิดสาธารณะ (ไม่รวม draft). category: road|trail|fun, status: open|closed|upcoming, month: YYYY-MM"
+          }
+        },
+        {
+          "name": "Event Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/events/{{eventSlug}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public",
+                "events",
+                "{{eventSlug}}"
+              ]
+            },
+            "description": "รายละเอียดงานตาม slug (ใช้ eventSlug จาก Create Event)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public - Orders",
+      "item": [
+        {
+          "name": "Create Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\",()=>pm.response.to.have.status(201));",
+                  "const d=pm.response.json().data;",
+                  "pm.collectionVariables.set('orderNo',d.orderNo);",
+                  "pm.collectionVariables.set('phoneLast4','5678');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participants\": [\n    {\n      \"firstName\": \"สมชาย\",\n      \"lastName\": \"ใจดี\",\n      \"gender\": \"ชาย\",\n      \"birthDay\": \"15\",\n      \"birthMonth\": \"6\",\n      \"birthYear\": \"1990\",\n      \"nationality\": \"ไทย\",\n      \"identity\": \"\",\n      \"declineIdentity\": true,\n      \"email\": \"somchai@example.com\",\n      \"phone\": \"0812345678\",\n      \"medical\": \"\",\n      \"blood\": \"O\",\n      \"emergencyName\": \"สมหญิง ใจดี\",\n      \"emergencyRelation\": \"ภรรยา\",\n      \"emergencyPhone\": \"0898765432\",\n      \"race\": \"5K\",\n      \"size\": \"M\",\n      \"province\": \"กรุงเทพมหานคร\",\n      \"team\": \"\",\n      \"applicantType\": \"บุคคลทั่วไป\"\n    }\n  ],\n  \"delivery\": {\n    \"method\": \"pickup\",\n    \"contact\": \"สมชาย ใจดี\",\n    \"phone\": \"0812345678\",\n    \"email\": \"somchai@example.com\",\n    \"street\": \"\",\n    \"subdistrict\": \"\",\n    \"district\": \"\",\n    \"province\": \"\",\n    \"postalCode\": \"\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/events/{{eventSlug}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public",
+                "events",
+                "{{eventSlug}}",
+                "orders"
+              ]
+            },
+            "description": "สมัครวิ่ง สร้างออเดอร์สถานะ pending ยอดเงินคำนวณฝั่ง server. race ต้องตรงชื่อระยะของงาน, delivery.method: pickup|shipping (shipping ต้องกรอกที่อยู่ + postalCode 5 หลัก). มี rate limit"
+          }
+        },
+        {
+          "name": "Create Order (shipping)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\",()=>pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participants\": [\n    {\n      \"firstName\": \"สมชาย\",\n      \"lastName\": \"ใจดี\",\n      \"gender\": \"ชาย\",\n      \"birthDay\": \"15\",\n      \"birthMonth\": \"6\",\n      \"birthYear\": \"1990\",\n      \"nationality\": \"ไทย\",\n      \"identity\": \"\",\n      \"declineIdentity\": true,\n      \"email\": \"somchai@example.com\",\n      \"phone\": \"0812345678\",\n      \"medical\": \"\",\n      \"blood\": \"O\",\n      \"emergencyName\": \"สมหญิง ใจดี\",\n      \"emergencyRelation\": \"ภรรยา\",\n      \"emergencyPhone\": \"0898765432\",\n      \"race\": \"5K\",\n      \"size\": \"M\",\n      \"province\": \"กรุงเทพมหานคร\",\n      \"team\": \"\",\n      \"applicantType\": \"บุคคลทั่วไป\"\n    }\n  ],\n  \"delivery\": {\n    \"method\": \"shipping\",\n    \"contact\": \"สมชาย ใจดี\",\n    \"phone\": \"0812345678\",\n    \"email\": \"somchai@example.com\",\n    \"street\": \"99/9 ถนนสุขุมวิท\",\n    \"subdistrict\": \"คลองเตย\",\n    \"district\": \"คลองเตย\",\n    \"province\": \"กรุงเทพมหานคร\",\n    \"postalCode\": \"10110\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/events/{{eventSlug}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public",
+                "events",
+                "{{eventSlug}}",
+                "orders"
+              ]
+            },
+            "description": "สมัครพร้อมจัดส่งเสื้อ/BIB (บวกค่าส่ง) ตัวอย่างนี้ไม่เปลี่ยน orderNo ใน variable"
+          }
+        },
+        {
+          "name": "Find Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/orders/{{orderNo}}?phoneLast4={{phoneLast4}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public",
+                "orders",
+                "{{orderNo}}"
+              ],
+              "query": [
+                {
+                  "key": "phoneLast4",
+                  "value": "{{phoneLast4}}",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "ค้นหาออเดอร์ด้วย orderNo + เบอร์โทร 4 หลักท้าย"
+          }
+        },
+        {
+          "name": "Upload Slip",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "phoneLast4",
+                  "value": "{{phoneLast4}}",
+                  "type": "text"
+                },
+                {
+                  "key": "slip",
+                  "type": "file",
+                  "src": [],
+                  "description": "รูปสลิป (JPG/PNG ตรวจด้วย magic bytes, ขนาดไม่เกิน MAX_SLIP_MB)"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/orders/{{orderNo}}/slip",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public",
+                "orders",
+                "{{orderNo}}",
+                "slip"
+              ]
+            },
+            "description": "แนบสลิปแบบ multipart/form-data. field: slip (ไฟล์เดียว), phoneLast4. ต้องเลือกไฟล์ในช่อง slip ก่อนส่ง"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Events",
+      "item": [
+        {
+          "name": "List Events",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events?page=1&pageSize=20&q=&status=open",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "disabled": false
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "open",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "ทุก role. status: draft|open|closed|upcoming"
+          }
+        },
+        {
+          "name": "Create Event",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('eventSlug','demo-run-'+Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\",()=>pm.response.to.have.status(201));",
+                  "const d=pm.response.json().data;",
+                  "pm.collectionVariables.set('eventId',d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bangkok Fun Run 2030\",\n  \"slug\": \"{{eventSlug}}\",\n  \"subtitle\": \"วิ่งสนุกกลางกรุง\",\n  \"description\": \"งานวิ่งตัวอย่างสำหรับทดสอบ\",\n  \"date\": \"2030-12-31\",\n  \"venue\": \"สวนลุมพินี\",\n  \"province\": \"กรุงเทพมหานคร\",\n  \"category\": \"fun\",\n  \"theme\": \"orange\",\n  \"status\": \"open\",\n  \"registrationEnds\": \"2030-12-01\",\n  \"organizer\": \"Running Club\",\n  \"refundPolicy\": \"ไม่คืนเงินทุกกรณี\",\n  \"races\": [\n    {\n      \"name\": \"5K\",\n      \"price\": 500,\n      \"quota\": 100,\n      \"start\": \"05:30\"\n    },\n    {\n      \"name\": \"10K\",\n      \"price\": 700,\n      \"quota\": 100,\n      \"start\": \"05:00\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events"
+              ]
+            },
+            "description": "เฉพาะ super_admin. สร้างงานใหม่ (slug สร้างอัตโนมัติใน pre-request) เก็บ eventId ลง variable"
+          }
+        },
+        {
+          "name": "Get Event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/{{eventId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "{{eventId}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Update Event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bangkok Fun Run 2030 (updated)\",\n  \"slug\": \"{{eventSlug}}\",\n  \"subtitle\": \"วิ่งสนุกกลางกรุง\",\n  \"description\": \"งานวิ่งตัวอย่างสำหรับทดสอบ\",\n  \"date\": \"2030-12-31\",\n  \"venue\": \"สวนลุมพินี\",\n  \"province\": \"กรุงเทพมหานคร\",\n  \"category\": \"fun\",\n  \"theme\": \"orange\",\n  \"status\": \"open\",\n  \"registrationEnds\": \"2030-12-01\",\n  \"organizer\": \"Running Club\",\n  \"refundPolicy\": \"ไม่คืนเงินทุกกรณี\",\n  \"races\": [\n    {\n      \"name\": \"5K\",\n      \"price\": 500,\n      \"quota\": 100,\n      \"start\": \"05:30\"\n    },\n    {\n      \"name\": \"10K\",\n      \"price\": 700,\n      \"quota\": 100,\n      \"start\": \"05:00\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/{{eventId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "{{eventId}}"
+              ]
+            },
+            "description": "เฉพาะ super_admin. ส่ง body เต็มเหมือนตอนสร้าง"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Orders",
+      "item": [
+        {
+          "name": "List Orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders?page=1&pageSize=20&eventId={{eventId}}&status=&q={{orderNo}}&from=2030-01-01&to=2030-12-31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "disabled": false
+                },
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": false
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "{{orderNo}}",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "2030-01-01",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2030-12-31",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "status: pending|slip_uploaded|paid|rejected|expired|cancelled. คำค้นหาเทียบ orderNo/ชื่อ/เบอร์"
+          }
+        },
+        {
+          "name": "Resolve orderId from orderNo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));",
+                  "const d=pm.response.json().data||[];",
+                  "if(d[0]) pm.collectionVariables.set('orderId',d[0].id);",
+                  "pm.test('found order',()=>pm.expect(d.length).to.be.above(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders?q={{orderNo}}&pageSize=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "{{orderNo}}",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "1",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "หา orderId (Mongo id) จาก orderNo แล้วเก็บลง variable สำหรับ request ถัดไป"
+          }
+        },
+        {
+          "name": "Get Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Cancel Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"ผู้สมัครขอยกเลิก\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders/{{orderId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "orders",
+                "{{orderId}}",
+                "cancel"
+              ]
+            },
+            "description": "super_admin/reviewer. reason ไม่บังคับ คืนโควตา"
+          }
+        },
+        {
+          "name": "Set Tracking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trackingProvider\": \"Kerry Express\",\n  \"trackingNo\": \"KEX1234567890\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders/{{orderId}}/tracking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "orders",
+                "{{orderId}}",
+                "tracking"
+              ]
+            },
+            "description": "ใส่เลขพัสดุ (ใช้ได้กับออเดอร์ที่จัดส่ง)"
+          }
+        },
+        {
+          "name": "Approve Slip",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionRef\": \"TXN-20300101-0001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders/{{orderId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "orders",
+                "{{orderId}}",
+                "approve"
+              ]
+            },
+            "description": "อนุมัติสลิป: transactionRef 3-64 ตัวอักษร (A-Z a-z 0-9 - _ / .) ออเดอร์ต้องเป็น slip_uploaded"
+          }
+        },
+        {
+          "name": "Reject Slip",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"ยอดเงินไม่ตรง\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders/{{orderId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "orders",
+                "{{orderId}}",
+                "reject"
+              ]
+            },
+            "description": "ปฏิเสธสลิป ต้องระบุเหตุผล"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Slips",
+      "item": [
+        {
+          "name": "List Slips",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/slips?page=1&pageSize=20&eventId={{eventId}}&tab=waiting",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "slips"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "disabled": false
+                },
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "tab",
+                  "value": "waiting",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "tab: waiting (รอตรวจ) | history"
+          }
+        },
+        {
+          "name": "Get Slip File",
+          "event": [],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/payments/{{paymentId}}/slip",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "payments",
+                "{{paymentId}}",
+                "slip"
+              ]
+            },
+            "description": "ไฟล์รูปสลิป ต้องกำหนด paymentId เองใน collection variable (ดู id จาก response Get Order / List Slips)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Participants",
+      "item": [
+        {
+          "name": "List Participants",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/participants?page=1&pageSize=20&eventId={{eventId}}&q=&race=5K&status=paid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "participants"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "disabled": false
+                },
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "race",
+                  "value": "5K",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "paid",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Patch Participant",
+          "event": [],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"collected\": true,\n  \"bibNo\": \"1001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/participants/{{participantId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "participants",
+                "{{participantId}}"
+              ]
+            },
+            "description": "บันทึกรับ BIB/ชุด (collected, bibNo หรือ null). ต้องกำหนด participantId เอง (id จาก List Participants)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Shipping",
+      "item": [
+        {
+          "name": "List Shipping",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/shipping?page=1&pageSize=20&eventId={{eventId}}&method=shipping",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "shipping"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "disabled": false
+                },
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "method",
+                  "value": "shipping",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "method: pickup|shipping"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Dashboard & Reports",
+      "item": [
+        {
+          "name": "Dashboard",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/dashboard?eventId={{eventId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "dashboard"
+              ],
+              "query": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Report Summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/reports/summary?eventId={{eventId}}&from=2030-01-01&to=2030-12-31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "reports",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "2030-01-01",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2030-12-31",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Report Shirt Sizes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/reports/shirt-sizes?eventId={{eventId}}&status=paid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "reports",
+                "shirt-sizes"
+              ],
+              "query": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "paid",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "status default = paid"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Export CSV",
+      "item": [
+        {
+          "name": "Export Orders CSV",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/export/orders.csv?eventId={{eventId}}&status=&q=&from=&to=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "export",
+                "orders.csv"
+              ],
+              "query": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "ไม่มี paging จำกัดสูงสุด 50,000 แถว. ใช้ Send and Download เพื่อบันทึกไฟล์"
+          }
+        },
+        {
+          "name": "Export Participants CSV",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/export/participants.csv?eventId={{eventId}}&q=&race=&status=paid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "export",
+                "participants.csv"
+              ],
+              "query": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "race",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "paid",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Export Fulfillment CSV",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/export/fulfillment.csv?eventId={{eventId}}&method=shipping",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "export",
+                "fulfillment.csv"
+              ],
+              "query": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "method",
+                  "value": "shipping",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Users",
+      "item": [
+        {
+          "name": "List Users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "users"
+              ]
+            },
+            "description": "เฉพาะ super_admin"
+          }
+        },
+        {
+          "name": "Create User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\",()=>pm.response.to.have.status(201));",
+                  "const d=pm.response.json().data;",
+                  "if(d&&d.id) pm.collectionVariables.set('targetUserId',d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Reviewer Demo\",\n  \"email\": \"reviewer.{{$timestamp}}@example.com\",\n  \"password\": \"ChangeMe12345\",\n  \"role\": \"reviewer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "users"
+              ]
+            },
+            "description": "เฉพาะ super_admin. role: super_admin|reviewer|viewer, password อย่างน้อย 10 ตัวอักษร"
+          }
+        },
+        {
+          "name": "Update User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Reviewer Renamed\",\n  \"role\": \"viewer\",\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{targetUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "users",
+                "{{targetUserId}}"
+              ]
+            },
+            "description": "ส่งเฉพาะ field ที่แก้ (name, role, active, password) ห้ามส่ง field อื่น (strict)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth - Run Last",
+      "description": "Change Password และ Logout ทำให้ session/รหัสผ่านเปลี่ยน ควรรันเป็นลำดับสุดท้าย",
+      "item": [
+        {
+          "name": "Change Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\",()=>pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{adminPassword}}\",\n  \"newPassword\": \"NewPassword12345\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "auth",
+                "change-password"
+              ]
+            },
+            "description": "เปลี่ยนรหัสผ่าน (newPassword อย่างน้อย 10 ตัวอักษร) คืน 204. หลังเรียกให้แก้ adminPassword ใน environment"
+          }
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\",()=>pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "ล้าง cookie"
+          }
+        }
+      ]
+    }
+  ]
+}
