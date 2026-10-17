@@ -1,0 +1,152 @@
+name: CI/CD for running-event-api
+
+# pull_request -> main : typecheck + build
+# push -> main         : checks, push image to GHCR, deploy to server over SSH
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/warunyoo1/running-event-api
+
+jobs:
+  check:
+    name: Typecheck and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+
+  build:
+    name: Build and push image
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to server
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          # optional: output of `ssh-keyscan -p <port> <host>` (pins the server host key)
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || secrets.DEPLOY_PATH || '/opt/running-event-api' }}
+        run: |
+          set -euo pipefail
+          umask 077
+          SSH_PORT="${SSH_PORT:-22}"
+          KEY_FILE="$(mktemp)"
+          KNOWN_HOSTS_FILE="$(mktemp)"
+          trap 'rm -f "$KEY_FILE" "$KNOWN_HOSTS_FILE"' EXIT
+
+          printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+
+          # Host key handling: use the pinned SSH_KNOWN_HOSTS secret when provided.
+          # Otherwise fall back to trust-on-first-use via ssh-keyscan (weaker: protects
+          # only against changes after this run, not against a MITM during this run).
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"
+          else
+            echo "::warning::SSH_KNOWN_HOSTS not set, using ssh-keyscan (not verified)"
+            ssh-keyscan -p "$SSH_PORT" -T 10 "$SSH_HOST" > "$KNOWN_HOSTS_FILE" 2>/dev/null
+          fi
+
+          # Runs on the server. Quoted heredoc: nothing is expanded locally.
+          # The server must already be logged in to ghcr.io (docker login, one time).
+          cat > remote.sh <<'REMOTE'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          COMPOSE="docker compose -f docker-compose.prod.yml"
+
+          $COMPOSE pull api
+          $COMPOSE up -d
+
+          echo "Waiting for api healthcheck..."
+          cid="$($COMPOSE ps -q api)"
+          status=starting
+          for i in $(seq 1 30); do
+            status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid")"
+            [ "$status" = healthy ] && break
+            sleep 5
+          done
+          if [ "$status" != healthy ]; then
+            echo "api not healthy (status: $status)"
+            $COMPOSE logs --tail 50 api || true
+            exit 1
+          fi
+
+          docker image prune -f
+          echo "Deploy OK"
+          REMOTE
+
+          ssh -i "$KEY_FILE" -p "$SSH_PORT" \
+            -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
+            -o StrictHostKeyChecking=yes \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            "$SSH_USER@$SSH_HOST" \
+            "DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -s" < remote.sh

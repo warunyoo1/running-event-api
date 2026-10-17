@@ -1,0 +1,64 @@
+# mongo (single-node replica set) + api + caddy (optional, profile "proxy")
+# ต้องมีไฟล์ .env (คัดลอกจาก .env.example) ก่อนรัน
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    # ไม่เปิด port ออกสู่ host: เข้าถึงได้เฉพาะ network ภายใน compose
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      # initiate replica set ถ้ายังไม่เคย แล้วรายงาน healthy เมื่อเป็น primary
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { rs.status() } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}) }; quit(db.hello().isWritablePrimary ? 0 : 1)"
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+
+  api:
+    build: .
+    image: running-event-api:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      MONGODB_URI: mongodb://mongo:27017/running_event?replicaSet=rs0
+      UPLOAD_DIR: /app/uploads
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+    expose:
+      - "4000"
+    # เปิดให้เครื่อง host เข้าถึงเฉพาะ loopback (ถ้าใช้ caddy ไม่ต้องใช้ port นี้)
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-4000}:4000"
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [proxy]
+    restart: unless-stopped
+    environment:
+      API_DOMAIN: ${API_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api]
+
+volumes:
+  mongo_data:
+  uploads:
+  caddy_data:
+  caddy_config:
