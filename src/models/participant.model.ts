@@ -1,4 +1,4 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import { Schema, model, type InferSchemaType, type Types } from "mongoose";
 import { cleanJson } from "./plugins";
 
 const participantSchema = new Schema(
@@ -42,5 +42,7 @@ participantSchema.index(
 cleanJson(participantSchema, ["idNumberEnc"]);
 
 export type ParticipantDoc = InferSchemaType<typeof participantSchema>;
+/** A participant as returned by `.lean()`. */
+export type ParticipantLean = ParticipantDoc & { _id: Types.ObjectId };
 export const Participant = model("Participant", participantSchema);
 

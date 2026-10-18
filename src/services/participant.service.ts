@@ -1,31 +1,23 @@
-import type { FilterQuery, Types } from "mongoose";
+import type { FilterQuery } from "mongoose";
 import { EXPORT_LIMIT } from "../config/constants";
 import { Order, Participant } from "../models";
-import type { ParticipantDoc } from "../models/participant.model";
+import type {
+  ParticipantDoc,
+  ParticipantLean,
+} from "../models/participant.model";
+import type { PageMeta } from "../types/api";
 import { ApiError } from "../utils/api-error";
-import { maskLast4 } from "../utils/crypto";
-import { withId } from "../utils/lean";
 import { escapeRegex, pageMeta, skipOf } from "../utils/pagination";
 import type {
   ExportParticipantsQuery,
   ParticipantsQuery,
   PatchParticipantBody,
 } from "../validators/admin.validator";
+import {
+  toParticipantWithOrderView,
+  type ParticipantWithOrderView,
+} from "../views/participant.view";
 import { audit } from "./audit.service";
-
-type LeanParticipant = {
-  _id: Types.ObjectId;
-  orderId: Types.ObjectId;
-  idNumberEnc?: string | null;
-  idLast4?: string | null;
-  declineIdentity?: boolean | null;
-};
-
-/** Admin view of a lean participant: never exposes the encrypted ID, only its last 4 digits. */
-export const maskedParticipant = <T extends LeanParticipant>(p: T) => ({
-  ...withId(p, ["idNumberEnc", "idLast4"]),
-  idNumber: p.declineIdentity ? "" : maskLast4(p.idLast4),
-});
 
 async function buildFilter(
   f: ExportParticipantsQuery,
@@ -60,22 +52,21 @@ async function buildFilter(
   return filter;
 }
 
-async function withOrders<T extends LeanParticipant>(rows: T[]) {
+async function withOrders(
+  rows: ParticipantLean[],
+): Promise<ParticipantWithOrderView[]> {
   const orders = await Order.find({ _id: { $in: rows.map((r) => r.orderId) } })
     .select("orderNo status delivery")
     .lean();
   const map = new Map(orders.map((o) => [String(o._id), o]));
-  return rows.map((p) => {
-    const o = map.get(String(p.orderId));
-    return {
-      ...maskedParticipant(p),
-      orderNo: o?.orderNo ?? "",
-      orderStatus: o?.status ?? "",
-    };
-  });
+  return rows.map((p) =>
+    toParticipantWithOrderView(p, map.get(String(p.orderId))),
+  );
 }
 
-export async function list(q: ParticipantsQuery) {
+export async function list(
+  q: ParticipantsQuery,
+): Promise<{ data: ParticipantWithOrderView[]; meta: PageMeta }> {
   const filter = await buildFilter(q);
   const [rows, total] = await Promise.all([
     Participant.find(filter)
@@ -88,7 +79,9 @@ export async function list(q: ParticipantsQuery) {
   return { data: await withOrders(rows), meta: pageMeta(q, total) };
 }
 
-export async function listForExport(f: ExportParticipantsQuery) {
+export async function listForExport(
+  f: ExportParticipantsQuery,
+): Promise<ParticipantWithOrderView[]> {
   const rows = await Participant.find(await buildFilter(f))
     .sort({ createdAt: -1, _id: 1 })
     .limit(EXPORT_LIMIT)
@@ -100,7 +93,7 @@ export async function patch(
   actorId: string,
   id: string,
   body: PatchParticipantBody,
-) {
+): Promise<ParticipantWithOrderView> {
   const participant = await Participant.findById(id);
   if (!participant)
     throw ApiError.notFound("ไม่พบผู้สมัคร", "PARTICIPANT_NOT_FOUND");

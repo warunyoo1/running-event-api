@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { env } from "../config/env";
 import { User } from "../models";
+import type { UserJson } from "../models/user.model";
 import { ApiError } from "../utils/api-error";
 import type {
   CreateUserBody,
@@ -10,12 +11,15 @@ import { audit } from "./audit.service";
 
 const LAST_SUPER_ADMIN_MSG = "ต้องมี super_admin ที่ใช้งานอยู่อย่างน้อย 1 คน";
 
-export async function list() {
+export async function list(): Promise<UserJson[]> {
   const users = await User.find().sort({ createdAt: 1 });
   return users.map((u) => u.toJSON());
 }
 
-export async function create(actorId: string, input: CreateUserBody) {
+export async function create(
+  actorId: string,
+  input: CreateUserBody,
+): Promise<UserJson> {
   if (await User.exists({ email: input.email }))
     throw ApiError.conflict("EMAIL_TAKEN", "อีเมลนี้ถูกใช้แล้ว");
   const user = await User.create({
@@ -41,7 +45,7 @@ export async function update(
   actorId: string,
   id: string,
   patch: UpdateUserBody,
-) {
+): Promise<UserJson> {
   const user = await User.findById(id);
   if (!user) throw ApiError.notFound("ไม่พบผู้ใช้", "USER_NOT_FOUND");
 

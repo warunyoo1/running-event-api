@@ -2,9 +2,11 @@ import type { FilterQuery, UpdateQuery } from "mongoose";
 import { Order, Payment } from "../models";
 import type { OrderDoc } from "../models/order.model";
 import { ApiError } from "../utils/api-error";
+import type { PageMeta } from "../types/api";
 import { pageMeta, skipOf } from "../utils/pagination";
-import { withTransaction } from "../utils/transaction";
 import type { SlipsQuery } from "../validators/admin.validator";
+import type { AdminOrderDetailView } from "../views/order.view";
+import { toSlipQueueRowView, type SlipQueueRowView } from "../views/slip.view";
 import { audit } from "./audit.service";
 import { findOrderOr404, getAdmin } from "./order/order-admin.service";
 
@@ -12,7 +14,7 @@ const APPROVE_INVALID_STATE = "อนุมัติได้เฉพาะอ�
 const REJECT_INVALID_STATE = "ปฏิเสธได้เฉพาะออเดอร์ที่รอตรวจสลิป";
 
 /**
- * Applies a slip review in one transaction: moves the order out of `slip_uploaded`
+ * Applies a slip review: moves the order out of `slip_uploaded`
  * (INVALID_STATE if it already left) and updates its latest submitted payment.
  */
 async function reviewSlip(
@@ -20,24 +22,26 @@ async function reviewSlip(
   orderUpdate: UpdateQuery<OrderDoc>,
   paymentSet: Record<string, unknown>,
   invalidStateMessage: string,
-) {
-  await withTransaction(async (session) => {
-    const res = await Order.updateOne(
-      { _id: id, status: "slip_uploaded" },
-      orderUpdate,
-      { session },
-    );
-    if (res.modifiedCount === 0)
-      throw ApiError.conflict("INVALID_STATE", invalidStateMessage);
-    await Payment.findOneAndUpdate(
-      { orderId: id, status: "submitted" },
-      { $set: paymentSet },
-      { session, sort: { createdAt: -1 } },
-    );
-  });
+): Promise<void> {
+  // The order update is the guarded step (only one reviewer wins); the payment update follows it.
+  const res = await Order.updateOne(
+    { _id: id, status: "slip_uploaded" },
+    orderUpdate,
+  );
+  if (res.modifiedCount === 0)
+    throw ApiError.conflict("INVALID_STATE", invalidStateMessage);
+  await Payment.findOneAndUpdate(
+    { orderId: id, status: "submitted" },
+    { $set: paymentSet },
+    { sort: { createdAt: -1 } },
+  );
 }
 
-export async function approve(actorId: string, id: string, rawRef: string) {
+export async function approve(
+  actorId: string,
+  id: string,
+  rawRef: string,
+): Promise<AdminOrderDetailView> {
   const transactionRef = rawRef.trim().toUpperCase(); // normalised so case variants can't bypass duplicate check
   const order = await findOrderOr404(id, "status");
   if (order.status !== "slip_uploaded")
@@ -65,7 +69,11 @@ export async function approve(actorId: string, id: string, rawRef: string) {
   return getAdmin(id);
 }
 
-export async function reject(actorId: string, id: string, reason: string) {
+export async function reject(
+  actorId: string,
+  id: string,
+  reason: string,
+): Promise<AdminOrderDetailView> {
   await findOrderOr404(id, "status");
   const now = new Date();
   const reviewed = { reviewedBy: actorId, reviewedAt: now };
@@ -79,7 +87,9 @@ export async function reject(actorId: string, id: string, reason: string) {
   return getAdmin(id);
 }
 
-export async function listSlips(q: SlipsQuery) {
+export async function listSlips(
+  q: SlipsQuery,
+): Promise<{ data: SlipQueueRowView[]; meta: PageMeta }> {
   const filter: FilterQuery<OrderDoc> =
     q.tab === "waiting"
       ? { status: "slip_uploaded" }
@@ -105,20 +115,8 @@ export async function listSlips(q: SlipsQuery) {
   const latest = new Map<string, (typeof payments)[number]>();
   for (const p of payments)
     if (!latest.has(String(p.orderId))) latest.set(String(p.orderId), p);
-  const data = orders.map((o) => ({
-    orderId: String(o._id),
-    orderNo: o.orderNo,
-    eventName: o.eventId?.name ?? "",
-    contactName: o.contactName,
-    amount: o.amount,
-    status: o.status,
-    slipUploadedAt: o.slipUploadedAt,
-    reviewedAt: o.reviewedAt,
-    rejectionReason: o.rejectionReason,
-    transactionRef: o.transactionRef,
-    paymentId: latest.has(String(o._id))
-      ? String(latest.get(String(o._id))!._id)
-      : null,
-  }));
+  const data = orders.map((o) =>
+    toSlipQueueRowView(o, latest.get(String(o._id))),
+  );
   return { data, meta: pageMeta(q, total) };
 }

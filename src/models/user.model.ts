@@ -1,4 +1,9 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import {
+  Schema,
+  model,
+  type HydratedDocument,
+  type InferSchemaType,
+} from "mongoose";
 import { roles } from "../config/constants";
 import { cleanJson } from "./plugins";
 
@@ -17,4 +22,6 @@ userSchema.index({ email: 1 }, { unique: true, name: "email_unique" });
 cleanJson(userSchema, ["passwordHash"]);
 
 export type UserDoc = InferSchemaType<typeof userSchema>;
+/** A user as sent to clients: `toJSON()` of the document (`cleanJson` hides `passwordHash`). */
+export type UserJson = ReturnType<HydratedDocument<UserDoc>["toJSON"]>;
 export const User = model("User", userSchema);

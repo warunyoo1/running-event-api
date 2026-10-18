@@ -1,4 +1,4 @@
-import type { OrderStatus } from "../config/constants";
+import type { OrderStatus } from "../../config/constants";
 
 /** Single source of truth for the order state machine. */
 export const transitions: Record<OrderStatus, readonly OrderStatus[]> = {
@@ -10,7 +10,7 @@ export const transitions: Record<OrderStatus, readonly OrderStatus[]> = {
   expired: [],
 };
 
-export const canTransition = (from: OrderStatus, to: OrderStatus) =>
+export const canTransition = (from: OrderStatus, to: OrderStatus): boolean =>
   transitions[from].includes(to);
 
 /** All statuses from which `to` is reachable. */

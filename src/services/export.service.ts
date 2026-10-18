@@ -6,17 +6,14 @@ import type {
   ExportParticipantsQuery,
   ExportShippingQuery,
 } from "../validators/admin.validator";
+import type { ShippingRowView } from "../views/shipping.view";
 import { adminFilter, decorateOrders } from "./order/order-admin.service";
 import * as participantService from "./participant.service";
 import * as shippingService from "./shipping.service";
 
-const iso = (d?: Date | null) => (d ? new Date(d).toISOString() : "");
+const iso = (d?: Date | null): string => (d ? new Date(d).toISOString() : "");
 
-type FulfillmentOrder = Awaited<
-  ReturnType<typeof shippingService.listForExport>
->[number];
-
-const addressLine = (o: FulfillmentOrder) =>
+const addressLine = (o: ShippingRowView): string =>
   o.address
     ? [
         o.address.street,
@@ -29,7 +26,7 @@ const addressLine = (o: FulfillmentOrder) =>
         .join(" ")
     : "";
 
-export async function ordersCsv(q: ExportOrdersQuery) {
+export async function ordersCsv(q: ExportOrdersQuery): Promise<string> {
   const orders = await decorateOrders(
     await Order.find(adminFilter(q))
       .sort({ createdAt: -1 })
@@ -72,7 +69,9 @@ export async function ordersCsv(q: ExportOrdersQuery) {
   ]);
 }
 
-export async function participantsCsv(f: ExportParticipantsQuery) {
+export async function participantsCsv(
+  f: ExportParticipantsQuery,
+): Promise<string> {
   const rows = await participantService.listForExport(f);
   return toCsv([
     [
@@ -124,7 +123,9 @@ export async function participantsCsv(f: ExportParticipantsQuery) {
   ]);
 }
 
-export async function fulfillmentCsv(f: ExportShippingQuery) {
+export async function fulfillmentCsv(
+  f: ExportShippingQuery,
+): Promise<string> {
   const orders = await shippingService.listForExport(f);
   return toCsv([
     [

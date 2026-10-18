@@ -1,12 +1,11 @@
 import { Types } from "mongoose";
 import {
-  API_PREFIX,
   EVENT_IMAGE_MAX_PER_EVENT,
   HTTP_STATUS,
   PUBLIC_EVENT_STATUSES,
-  type EventImageKind,
 } from "../config/constants";
 import { EventModel } from "../models";
+import type { EventImageLean } from "../models/event.model";
 import { ApiError } from "../utils/api-error";
 import {
   deleteEventImage,
@@ -18,22 +17,13 @@ import type {
   PatchImageBody,
   UploadImagesBody,
 } from "../validators/event.validator";
+import {
+  toAdminImageViews,
+  type AdminEventImageView,
+} from "../views/event-image.view";
 import { audit } from "./audit.service";
+import { eventNotFound } from "./service-errors";
 
-/** Stored image subdocument (lean). `filename` never leaves the server. */
-export type StoredImage = {
-  _id: Types.ObjectId;
-  kind: EventImageKind;
-  filename: string;
-  mime: string;
-  size: number;
-  alt?: string | null;
-  sortOrder?: number | null;
-  createdAt?: Date | null;
-};
-
-const eventNotFound = () =>
-  ApiError.notFound("ไม่พบงานวิ่ง", "EVENT_NOT_FOUND");
 const imageNotFound = () =>
   ApiError.notFound("ไม่พบรูปภาพ", "IMAGE_NOT_FOUND");
 const limitReached = () =>
@@ -43,55 +33,17 @@ const limitReached = () =>
     `งานวิ่งหนึ่งงานมีรูปได้ไม่เกิน ${EVENT_IMAGE_MAX_PER_EVENT} รูป`,
   );
 
-// --- views -------------------------------------------------------------
-
-const sorted = (images: readonly StoredImage[] | null | undefined) =>
-  [...(images ?? [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-
-const publicUrl = (imageId: string) =>
-  `${API_PREFIX}/public/event-images/${imageId}`;
-const previewUrl = (eventId: string, imageId: string) =>
-  `${API_PREFIX}/admin/events/${eventId}/images/${imageId}/file`;
-
-/** Public view: no filename, mime or size. Sorted by `sortOrder` (stable). */
-export function publicImages(e: { images?: readonly StoredImage[] | null }) {
-  return sorted(e.images).map((i) => ({
-    id: String(i._id),
-    kind: i.kind,
-    alt: i.alt ?? "",
-    url: publicUrl(String(i._id)),
-    sortOrder: i.sortOrder ?? 0,
-  }));
-}
-
-/** Admin view: public view + preview URL (works for drafts), mime, size and createdAt. */
-export function adminImages(e: {
-  _id: unknown;
-  images?: readonly StoredImage[] | null;
-}) {
-  const eventId = String(e._id);
-  return sorted(e.images).map((i) => ({
-    id: String(i._id),
-    kind: i.kind,
-    alt: i.alt ?? "",
-    url: publicUrl(String(i._id)),
-    sortOrder: i.sortOrder ?? 0,
-    previewUrl: previewUrl(eventId, String(i._id)),
-    mime: i.mime,
-    size: i.size,
-    createdAt: i.createdAt ? i.createdAt.toISOString() : null,
-  }));
-}
-
 // --- admin operations --------------------------------------------------
 
-export async function listImages(eventId: string) {
+export async function listImages(
+  eventId: string,
+): Promise<AdminEventImageView[]> {
   const e = await EventModel.findOne(
     { _id: eventId, archived: false },
     { images: 1 },
   ).lean();
   if (!e) throw eventNotFound();
-  return adminImages(e as { _id: unknown; images?: StoredImage[] });
+  return toAdminImageViews(e);
 }
 
 export async function addImages(
@@ -99,7 +51,7 @@ export async function addImages(
   eventId: string,
   files: Express.Multer.File[],
   body: UploadImagesBody,
-) {
+): Promise<AdminEventImageView[]> {
   if (files.length === 0)
     throw ApiError.validation({ files: "กรุณาแนบรูปภาพ" });
   const event = await EventModel.findOne(
@@ -120,7 +72,7 @@ export async function addImages(
     return d;
   });
 
-  const existing = (event.images ?? []) as Pick<StoredImage, "sortOrder">[];
+  const existing = event.images ?? [];
   if (existing.length + files.length > EVENT_IMAGE_MAX_PER_EVENT)
     throw limitReached();
   const base = existing.length
@@ -131,7 +83,7 @@ export async function addImages(
   const cleanup = () =>
     Promise.all(written.map((name) => deleteEventImage(eventId, name)));
   const now = new Date();
-  const docs: StoredImage[] = [];
+  const docs: EventImageLean[] = [];
   try {
     for (const [i, file] of files.entries()) {
       const filename = await saveEventImage(eventId, file.buffer, detected[i].ext);
@@ -173,7 +125,7 @@ export async function addImages(
     count: docs.length,
     kind: body.kind,
   });
-  return adminImages({ _id: eventId, images: docs });
+  return toAdminImageViews({ _id: eventId, images: docs });
 }
 
 export async function updateImage(
@@ -181,7 +133,7 @@ export async function updateImage(
   eventId: string,
   imageId: string,
   patch: PatchImageBody,
-) {
+): Promise<AdminEventImageView> {
   const set: Record<string, unknown> = {};
   if (patch.kind !== undefined) set["images.$.kind"] = patch.kind;
   if (patch.alt !== undefined) set["images.$.alt"] = patch.alt;
@@ -200,9 +152,7 @@ export async function updateImage(
     imageId,
     fields: Object.keys(patch),
   });
-  const view = adminImages(e as { _id: unknown; images?: StoredImage[] }).find(
-    (i) => i.id === imageId,
-  );
+  const view = toAdminImageViews(e).find((i) => i.id === imageId);
   if (!view) throw imageNotFound();
   return view;
 }
@@ -211,13 +161,13 @@ export async function reorderImages(
   actorId: string,
   eventId: string,
   ids: string[],
-) {
+): Promise<AdminEventImageView[]> {
   const e = await EventModel.findOne(
     { _id: eventId, archived: false },
     { images: 1 },
   ).lean();
   if (!e) throw eventNotFound();
-  const current = ((e.images ?? []) as StoredImage[]).map((i) => String(i._id));
+  const current = (e.images ?? []).map((i) => String(i._id));
   const same =
     ids.length === current.length && ids.every((id) => current.includes(id));
   if (!same)
@@ -252,7 +202,7 @@ export async function removeImage(
   actorId: string,
   eventId: string,
   imageId: string,
-) {
+): Promise<void> {
   const before = await EventModel.findOneAndUpdate(
     { _id: eventId, archived: false, "images._id": imageId },
     { $pull: { images: { _id: imageId } } },
@@ -263,9 +213,7 @@ export async function removeImage(
       throw eventNotFound();
     throw imageNotFound();
   }
-  const image = ((before.images ?? []) as StoredImage[]).find(
-    (i) => String(i._id) === imageId,
-  );
+  const image = (before.images ?? []).find((i) => String(i._id) === imageId);
   // The DB is the source of truth: a missing/undeletable file never fails the request.
   if (image) await deleteEventImage(eventId, image.filename);
   await audit(actorId, "event.image.delete", "Event", eventId, { imageId });
@@ -278,7 +226,10 @@ export async function removeImage(
  * + stored filename), never from the request. Public lookups only see non-archived, non-draft events;
  * the admin variant (`adminEventId`) also sees drafts.
  */
-export async function getImageFile(imageId: string, adminEventId?: string) {
+export async function getImageFile(
+  imageId: string,
+  adminEventId?: string,
+): Promise<{ fullPath: string; mime: string }> {
   const filter = adminEventId
     ? { _id: adminEventId, archived: false, "images._id": imageId }
     : {
@@ -287,7 +238,7 @@ export async function getImageFile(imageId: string, adminEventId?: string) {
         "images._id": imageId,
       };
   const e = await EventModel.findOne(filter, { "images.$": 1 }).lean();
-  const image = (e?.images as StoredImage[] | undefined)?.[0];
+  const image = e?.images?.[0];
   if (!e || !image) throw imageNotFound();
   try {
     return {

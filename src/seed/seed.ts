@@ -5,7 +5,7 @@ import { MS_PER_HOUR, type OrderStatus, type Role } from "../config/constants";
 import { connectDatabase, disconnectDatabase } from "../config/database";
 import { env } from "../config/env";
 import { EventModel, Order, Participant, Payment, Race, User, syncAllIndexes } from "../models";
-import { QUOTA_HOLDING } from "../services/order-state";
+import { QUOTA_HOLDING } from "../services/order/order-state";
 import { adminOnlyEvents, buildMockOrders, mockUsers, publicEvents, type SeedEvent } from "./seed-data";
 
 export type SeedConfig = {

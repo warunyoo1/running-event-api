@@ -1,34 +1,32 @@
 import { Types } from "mongoose";
-import { shirtSizes } from "../config/constants";
 import { EventModel, Order, Participant } from "../models";
 import { bangkokRange } from "../utils/date-range";
 import type {
   ShirtSizesQuery,
   SummaryQuery,
 } from "../validators/admin.validator";
-import { QUOTA_HOLDING } from "./order-state";
+import {
+  toReportSummaryView,
+  toShirtSizeReportView,
+  type ReportSummaryView,
+  type ShirtSizeReportView,
+  type ShirtSizeRow,
+  type SummaryRaceRow,
+  type SummaryTotalsRow,
+} from "../views/report.view";
+import { QUOTA_HOLDING } from "./order/order-state";
 
-export async function summary(q: SummaryQuery) {
+export async function summary(q: SummaryQuery): Promise<ReportSummaryView> {
   const orderMatch: Record<string, unknown> = {};
   if (q.eventId) orderMatch.eventId = new Types.ObjectId(q.eventId);
   const range = bangkokRange(q.from, q.to);
   if (range) orderMatch.createdAt = range;
 
-  const totalsRows = await Order.aggregate<{
-    _id: string;
-    n: number;
-    amount: number;
-  }>([
+  const totalsRows = await Order.aggregate<SummaryTotalsRow>([
     { $match: { ...orderMatch, status: { $in: [...QUOTA_HOLDING] } } },
     { $group: { _id: "$status", n: { $sum: 1 }, amount: { $sum: "$amount" } } },
   ]);
-  const paid = totalsRows.find((r) => r._id === "paid");
-  const rows = await Participant.aggregate<{
-    _id: { eventId: Types.ObjectId; race: string };
-    participants: number;
-    paidParticipants: number;
-    revenue: number;
-  }>([
+  const rows = await Participant.aggregate<SummaryRaceRow>([
     {
       $lookup: {
         from: "orders",
@@ -69,28 +67,13 @@ export async function summary(q: SummaryQuery) {
     .select("name")
     .lean();
   const evName = new Map(events.map((e) => [String(e._id), e.name]));
-  return {
-    totals: {
-      orders: totalsRows.reduce((a, r) => a + r.n, 0),
-      paidOrders: paid?.n ?? 0,
-      paidRevenue: paid?.amount ?? 0,
-    },
-    rows: rows.map((r) => ({
-      eventId: String(r._id.eventId),
-      eventName: evName.get(String(r._id.eventId)) ?? "",
-      race: r._id.race,
-      participants: r.participants,
-      paidParticipants: r.paidParticipants,
-      revenue: r.revenue,
-    })),
-  };
+  return toReportSummaryView(totalsRows, rows, evName);
 }
 
-export async function shirtSizeReport(q: ShirtSizesQuery) {
-  const rows = await Participant.aggregate<{
-    _id: { race: string; size: string };
-    n: number;
-  }>([
+export async function shirtSizeReport(
+  q: ShirtSizesQuery,
+): Promise<ShirtSizeReportView> {
+  const rows = await Participant.aggregate<ShirtSizeRow>([
     ...(q.eventId
       ? [{ $match: { eventId: new Types.ObjectId(q.eventId) } }]
       : []),
@@ -106,23 +89,5 @@ export async function shirtSizeReport(q: ShirtSizesQuery) {
     { $match: { "o.status": q.status } },
     { $group: { _id: { race: "$raceName", size: "$size" }, n: { $sum: 1 } } },
   ]);
-  const sizes = shirtSizes.map((size) => ({
-    size,
-    count: rows.filter((r) => r._id.size === size).reduce((a, r) => a + r.n, 0),
-  }));
-  const races = [...new Set(rows.map((r) => r._id.race))].sort();
-  return {
-    status: q.status,
-    sizes,
-    total: sizes.reduce((a, s) => a + s.count, 0),
-    byRace: races.map((race) => ({
-      race,
-      sizes: Object.fromEntries(
-        shirtSizes.map((size) => [
-          size,
-          rows.find((r) => r._id.race === race && r._id.size === size)?.n ?? 0,
-        ]),
-      ),
-    })),
-  };
+  return toShirtSizeReportView(q.status, rows);
 }

@@ -3,6 +3,8 @@
 //   order-public  – order lookup by orderNo + phone for the public site
 //   order-admin   – admin list/detail, cancel, tracking
 //   order-quota   – quota reserve/release shared by create, cancel and expiry
+//   order-state   – state machine (transitions, QUOTA_HOLDING)
+// Response JSON is built in ../views/*.view.ts, never here.
 export { createOrder } from "./order/order-create.service";
 export {
   findPublic,

@@ -3,7 +3,7 @@
 API หลังบ้านสำหรับระบบรับสมัครงานวิ่ง (หน้าบ้านสมัคร + หน้าแอดมินตรวจสลิป)
 
 - TypeScript, Node 22, Express 5, Zod
-- MongoDB + Mongoose (ต้องเป็น replica set เพราะใช้ transaction จองโควตา)
+- MongoDB + Mongoose (รองรับ MongoDB แบบ standalone ไม่ต้องเป็น replica set ระบบไม่ใช้ transaction)
 - โครงแบบ MVC: `routes` → `controllers` → `services` → `models`
 - ชำระเงินด้วยการอัปโหลดสลิป แอดมิน/เจ้าหน้าที่อนุมัติพร้อมเลขอ้างอิง หรือปฏิเสธพร้อมเหตุผล (ไม่มี payment gateway ไม่มีตรวจสลิปอัตโนมัติ)
 - แอดมินล็อกอินด้วย JWT ใน httpOnly cookie, bcrypt, role `super_admin` / `reviewer` / `viewer`
@@ -29,9 +29,15 @@ src/
       order-public.service.ts   ค้นหาออเดอร์ด้วย orderNo + phoneLast4
       order-admin.service.ts    list/detail/cancel/tracking ของแอดมิน, adminFilter, findOrderOr404
       order-quota.ts            จอง/คืนโควตา (ใช้ร่วมกันทั้ง create, cancel, expiry)
-    order-state.ts       state machine ของสถานะออเดอร์
-    event / review / slip / participant / shipping / dashboard / report / export / user / auth / audit / expiry
-  models/                Mongoose schema + index + type lean (เช่น RaceLean), index.ts รวม export ทุก model
+      order-state.ts            state machine ของสถานะออเดอร์ (transitions, QUOTA_HOLDING)
+    event.service.ts     barrel ให้ controller import (re-export จาก services/event/*)
+    event/
+      event-read.service.ts     list/detail ของ public และ admin
+      event-write.service.ts    create/update พร้อม races (ไม่มี transaction, ทำ compensation เมื่อล้มเหลว)
+    service-errors.ts    error ที่หลาย service ใช้ร่วมกัน (eventNotFound)
+    review / slip / event-image / participant / shipping / dashboard / report / export / user / auth / audit / expiry
+  views/                 แปลงเอกสารจาก DB เป็น JSON ของ response: <aggregate>.view.ts, ฟังก์ชัน pure toXxxView/toXxxViews + type ของ view
+  models/                Mongoose schema + index + type lean ที่ derive จาก schema (RaceLean, EventLean, OrderLean, ParticipantLean, PaymentLean, EventImageLean), index.ts รวม export ทุก model
   validators/            Zod schema ของ body/query/params พร้อม export type z.infer ของทุก schema
   middlewares/           auth/role, upload, validate (+ validatedParams/Query/Body), error handler (แปลง error → status), rate limit, origin check
     response-envelope.ts ครอบ res.json ให้ทุก response เป็น { statusCode, success, message, ... }
@@ -42,16 +48,42 @@ src/
     response.ts          ok() / created() / done() และ buildEnvelope()
     lean.ts              withId(): แปลงผล .lean() ให้ได้ { id, ...rest } แบบเดียวกับ toJSON
     collections.ts       groupBy()
-    date-range.ts, pagination.ts, transaction.ts (withTransaction), crypto.ts (AES-256-GCM), csv.ts, slip-file.ts ฯลฯ
+    date-range.ts, pagination.ts, compensation.ts (runUndo), crypto.ts (AES-256-GCM), csv.ts, slip-file.ts ฯลฯ
   seed/                  seed.ts + seed-data.ts
 ```
 
 ทิศทาง dependency คือ `routes → controllers → services → models` service ห้าม import controller และ controller ห้ามแตะ model โดยตรง
 
+### Project structure / layering
+
+```
+routes → controllers → services → models (+ types) ──► views
+ path      อ่าน input     DB + business     schema +      JSON ของ response
+ + auth    → เรียก        rule + เรียก      type lean     (pure function)
+           service        view
+```
+
+กฎของแต่ละชั้น
+
+- service ไม่สร้าง response JSON เอง: อ่าน/เขียน DB, ตัดสินตาม business rule, ทำ orchestration/compensation แล้วเรียก `toXxxView()` ที่ `return` ครั้งเดียว
+- view (`src/views/<aggregate>.view.ts`) เป็น pure function เท่านั้น: รับข้อมูลที่อ่านมาแล้วคืน JSON ไม่เข้าถึง DB ไม่มี side effect ไม่ใช้ `Date.now()` ไม่ import model (ใช้ได้แค่ `import type`) ตั้งชื่อ `toXxxView` / `toXxxViews` และ export type ของ view (`AdminEventView`, `RaceView` ฯลฯ) ลำดับ key ใน object คือส่วนหนึ่งของ contract ห้ามสลับ
+- type lean อยู่ติดกับ model: derive จาก schema ด้วย `InferSchemaType` (เช่น `RaceLean` ใน `race.model.ts`) service ห้ามประกาศ type เอกสาร/lean เอง ถ้าอ่านบาง field ให้ใช้ `Pick<XLean, ...>`
+- ค่าคงที่อยู่ใน `config/constants.ts` ส่วน helper ที่ใช้ร่วมกันตั้งแต่ 2 service ขึ้นไปให้ไปอยู่ที่ `utils/` หรือ `views/`
+
+เพิ่ม endpoint ใหม่ใน 5 บรรทัด
+
+```
+1. validators/thing.validator.ts      export schema + type z.infer
+2. views/thing.view.ts                export type ThingView + toThingView(row)  (pure)
+3. services/thing.service.ts          อ่าน DB แล้ว return toThingViews(rows)
+4. controllers/admin-thing.controller.ts   เรียก service แล้ว ok(res, data, meta)
+5. routes/admin.routes.ts             adminRoutes.get("/things", read, validate(...), things.list)
+```
+
 ## ความต้องการ
 
 - Node.js 22 (มี `engines` ใน package.json)
-- Docker + Docker Compose (สำหรับ MongoDB replica set และการ deploy)
+- Docker + Docker Compose (สำหรับ MongoDB และการ deploy)
 
 ## ตัวแปร environment
 
@@ -61,7 +93,7 @@ src/
 |---|---|---|
 | `NODE_ENV` | | `development` / `production` / `test` |
 | `PORT` | | ค่าเริ่มต้น `4000` |
-| `MONGODB_URI` | ✔ | ต้องมี `?replicaSet=rs0` (compose ตั้งให้เองสำหรับ container `api`) |
+| `MONGODB_URI` | ✔ | เช่น `mongodb://localhost:27017/running_event` ใช้ standalone ได้ (ถ้าใช้ replica set ก็ใส่ `?replicaSet=...` ได้ตามปกติ แต่ไม่จำเป็น) |
 | `JWT_SECRET` | ✔ | อย่างน้อย 32 ตัวอักษร สุ่มเอง |
 | `JWT_EXPIRES_IN` | | ค่าเริ่มต้น `8h` |
 | `COOKIE_SECURE` | | ว่าง = `true` เมื่อ production ถ้าเทสต์ผ่าน http ล้วนให้ตั้ง `false` |
@@ -89,7 +121,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"     
 
 ## รันบนเครื่อง (dev)
 
-MongoDB ต้องเป็น replica set ตั้ง `MONGODB_URI` ให้ชี้ไป replica set ที่เข้าถึงได้จากเครื่อง (หรือรันทั้งชุดด้วย Docker Compose ตามหัวข้อถัดไป)
+MongoDB แบบ standalone ใช้ได้เลย ไม่ต้องตั้ง replica set ตั้ง `MONGODB_URI` ให้ชี้ไป MongoDB ที่เข้าถึงได้จากเครื่อง (หรือรันทั้งชุดด้วย Docker Compose ตามหัวข้อถัดไป)
 
 ```bash
 npm install
@@ -108,30 +140,21 @@ npm run dev                     # http://localhost:4000/health
 
 ก่อนเปิด PR ให้รัน `npm run typecheck && npm run build` (CI ก็รันสองคำสั่งนี้เหมือนกัน) โปรเจกต์ยังไม่มี test อัตโนมัติ
 
-### ใช้ MongoDB จาก docker-compose ตอน dev
+### MongoDB
 
-`docker-compose.yml` มี service `mongo` เป็น single-node replica set `rs0` (healthcheck สั่ง `rs.initiate` ให้เอง) แต่ไม่ได้ publish port ออกมาที่ host ถ้าจะรัน `npm run dev` บนเครื่องโดยใช้ mongo ตัวนี้ ให้สร้างไฟล์ `docker-compose.override.yml` บนเครื่องตัวเอง (อย่า commit):
+ระบบทำงานบน MongoDB standalone ได้ ไม่ใช้ transaction จึงไม่ต้องตั้ง replica set และไม่ต้องแก้ MongoDB บน server
 
-```yaml
-services:
-  mongo:
-    ports:
-      - "127.0.0.1:27017:27017"
-```
-
-```bash
-docker compose up -d mongo      # รอจน docker compose ps ขึ้น healthy
-```
-
-แล้วตั้ง `.env` เป็น `MONGODB_URI=mongodb://localhost:27017/running_event?directConnection=true`
-(member ของ replica set ลงทะเบียนไว้เป็น `mongo:27017` ซึ่ง host หาไม่เจอ ถ้าใช้ `?replicaSet=rs0` จาก host จะต่อไม่ได้ `directConnection=true` ต่อเข้า primary ตรงๆ และใช้ transaction ได้ตามปกติ)
+- การจองโควตา/คืนโควตา ใช้ conditional update แบบ atomic ต่อ document แล้วเรียงลำดับเขียน (จองโควตา → สร้างออเดอร์) และลบ/คืนให้เมื่อขั้นตอนหลังล้มเหลว
+- ข้อแลกเปลี่ยนที่ยอมรับ: ถ้ามี request พร้อมกันหรือ process ล่มกลางคัน อาจเกิดโควตาค้างหรือจองซ้อนได้ในกรณีที่เกิดยาก
+- `docker-compose.yml` มี service `mongo` เป็น standalone ไม่ได้ publish port ถ้าจะรัน `npm run dev` บนเครื่องโดยใช้ mongo ตัวนี้ ให้สร้าง `docker-compose.override.yml` (อย่า commit) แล้ว map `127.0.0.1:27017:27017`
+- (ทางเลือก) จะใช้ replica set ก็ได้ ระบบไม่บังคับ
 
 ## รันด้วย Docker Compose
 
 ```bash
 cp .env.example .env            # แก้ค่าที่จำเป็น, CORS_ORIGINS ให้ตรงกับหน้าบ้าน
 docker compose build
-docker compose up -d            # mongo (replica set) + api
+docker compose up -d            # mongo (standalone) + api
 docker compose run --rm api node dist/seed/seed.js     # สร้าง super admin และข้อมูลเริ่มต้น
 docker compose ps               # รอให้ทั้งสอง service เป็น healthy
 ```
@@ -212,7 +235,7 @@ workflow: `.github/workflows/ci-cd.yml`
 
 ## เพิ่ม endpoint / module ใหม่
 
-ตัวอย่างนี้เพิ่ม `GET /api/v1/admin/things` (แอดมินทุก role อ่านได้) ใช้ลำดับ model → validator → service → controller → route
+ตัวอย่างนี้เพิ่ม `GET /api/v1/admin/things` (แอดมินทุก role อ่านได้) ใช้ลำดับ model → validator → view → service → controller → route
 
 1. Model (`src/models/thing.model.ts`) แล้ว export จาก `src/models/index.ts` และเพิ่มเข้าไปใน `syncAllIndexes`
 
@@ -237,24 +260,32 @@ workflow: `.github/workflows/ci-cd.yml`
    export type ThingsQuery = z.infer<typeof thingsQuery>;
    ```
 
-3. Service (`src/services/thing.service.ts`) ใส่ business logic ทั้งหมดไว้ที่นี่ รับ type จาก validator ถ้าไม่เจอข้อมูลหรือข้อมูลผิด ให้ throw `ApiError` (ไม่ต้องจัดการ `res`)
+3. View (`src/views/thing.view.ts`) แปลงเอกสารเป็น JSON ของ response เป็น pure function ไม่แตะ DB
 
    ```ts
-   export async function list(q: ThingsQuery) {
+   export type ThingView = { id: string } & Omit<ThingLean, "_id">;
+   export const toThingView = (t: ThingLean): ThingView => withId(t);
+   export const toThingViews = (rows: readonly ThingLean[]): ThingView[] => rows.map((r) => toThingView(r));
+   ```
+   - ถ้าใช้ `.lean()` ให้แปลงด้วย `withId()` (ภายใน view) เสมอ เพื่อให้ response ได้ `id` แทน `_id` เหมือน endpoint อื่น
+
+4. Service (`src/services/thing.service.ts`) ใส่ business logic ทั้งหมดไว้ที่นี่ รับ type จาก validator ถ้าไม่เจอข้อมูลหรือข้อมูลผิด ให้ throw `ApiError` (ไม่ต้องจัดการ `res`) และห้ามสร้าง response JSON เอง ให้เรียก view
+
+   ```ts
+   export async function list(q: ThingsQuery): Promise<{ data: ThingView[]; meta: PageMeta }> {
      const filter = q.eventId ? { eventId: q.eventId } : {};
      const [rows, total] = await Promise.all([
        Thing.find(filter).sort({ createdAt: -1 }).skip(skipOf(q)).limit(q.pageSize).lean(),
        Thing.countDocuments(filter),
      ]);
-     return { data: rows.map((r) => withId(r)), meta: pageMeta(q, total) };
+     return { data: toThingViews(rows), meta: pageMeta(q, total) };
    }
    ```
-   - ถ้าใช้ `.lean()` ให้แปลงด้วย `withId()` เสมอ เพื่อให้ response ได้ `id` แทน `_id` เหมือน endpoint อื่น
-   - ถ้าเขียนหลาย collection หรือมีการแก้โควตา ให้ห่อด้วย `withTransaction` (`utils/transaction.ts`)
+    - ห้ามใช้ transaction (production เป็น MongoDB standalone) ถ้าเขียนหลาย collection ให้เรียงลำดับเขียน ใช้ conditional update แบบ atomic ต่อ document และทำ compensating cleanup เมื่อขั้นตอนหลังล้มเหลว (ดู `utils/compensation.ts`, `services/order/order-create.service.ts`)
    - ค่าคงที่ใหม่ (limit, status, ข้อความที่ใช้ซ้ำ) ให้ไปใส่ใน `config/constants.ts`
    - list แบบแบ่งหน้าใช้ `pageQuery` + `skipOf`/`pageMeta` (`utils/pagination.ts`) เพื่อให้ `meta` มีรูปแบบเดียวกันทุก endpoint
 
-4. Controller (`src/controllers/admin-thing.controller.ts`) ให้บางที่สุด อ่าน input ที่ผ่าน validate แล้ว → เรียก service → ส่ง `ok()`/`created()`
+5. Controller (`src/controllers/admin-thing.controller.ts`) ให้บางที่สุด อ่าน input ที่ผ่าน validate แล้ว → เรียก service → ส่ง `ok()`/`created()`
 
    ```ts
    export async function list(_req: Request, res: Response) {
@@ -265,16 +296,16 @@ workflow: `.github/workflows/ci-cd.yml`
    Express 5 ส่ง promise ที่ reject ต่อให้ `errorHandler` เอง ไม่ต้องใส่ try/catch
    `T` ของ `validatedParams/Query/Body<T>()` ต้องเป็น type `z.infer` ของ schema ที่ใส่ใน `validate()` ของ route นั้น (helper นี้เป็นแค่ cast ถ้าเปลี่ยน schema ต้องเปลี่ยน `T` ด้วย)
 
-5. Route (`src/routes/admin.routes.ts`) ใส่สิทธิ์และ validate ที่นี่
+6. Route (`src/routes/admin.routes.ts`) ใส่สิทธิ์และ validate ที่นี่
 
    ```ts
    adminRoutes.get("/things", read, validate({ query: v.thingsQuery }), things.list);
    ```
    ใช้ `read` (ทุก role), `write` (super_admin + reviewer) หรือ `requireRole(...SUPER_ONLY)` route ฝั่ง admin ที่ประกาศหลัง `adminRoutes.use(requireAuth)` ต้องล็อกอินก่อนทุกตัว ถ้าเป็น module ใหม่ทั้งชุดให้สร้าง router แยกแล้ว mount ใน `routes/index.ts`
 
-6. รัน `npm run typecheck && npm run build` แล้วเพิ่ม endpoint ใหม่ลงในตาราง Endpoints ด้านล่าง
+7. รัน `npm run typecheck && npm run build && npm test` แล้วเพิ่ม endpoint ใหม่ลงในตาราง Endpoints ด้านล่าง
 
-ถ้า service ไฟล์ไหนใหญ่จนรวมหลายหน้าที่ ให้แยกแบบ `services/order/` แล้วเหลือไฟล์เดิมไว้เป็น barrel เพื่อจะได้ไม่ต้องแก้ import ใน controller
+ถ้า service ไฟล์ไหนใหญ่จนรวมหลายหน้าที่ ให้แยกแบบ `services/order/` หรือ `services/event/` แล้วเหลือไฟล์เดิมไว้เป็น barrel เพื่อจะได้ไม่ต้องแก้ import ใน controller
 
 ## รูปแบบ response
 
@@ -454,7 +485,7 @@ pending ──อัปโหลดสลิป──▶ slip_uploaded ──อ
 - ออเดอร์ที่อัปโหลดสลิปแล้วจะไม่หมดอายุอัตโนมัติ
 - งานหมดอายุทำงานใน process ทุก 60 วินาที
 - ยอดรวม = ราคาระยะ × จำนวนผู้สมัคร + ค่าจัดส่ง 50 บาท (ครั้งเดียวต่อออเดอร์ เฉพาะเลือกจัดส่ง)
-- จองโควตาแบบ atomic: `findOneAndUpdate` เงื่อนไข `reserved + n <= quota` ภายใน transaction เดียวกับการสร้างออเดอร์
+- จองโควตาแบบ atomic ต่อ race: `findOneAndUpdate` เงื่อนไข `reserved + n <= quota` (ไม่มี transaction) จองโควตาก่อนสร้างออเดอร์ และคืนโควตา/ลบข้อมูลเมื่อขั้นตอนหลังล้มเหลว ยกเลิก/หมดอายุคืนโควตาครั้งเดียวด้วย `quotaReleased`
 
 ## ความปลอดภัย
 

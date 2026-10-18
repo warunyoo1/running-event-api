@@ -1,4 +1,4 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import { Schema, model, type InferSchemaType, type Types } from "mongoose";
 import {
   EVENT_IMAGE_ALT_MAX,
   EVENT_IMAGE_MIMES,
@@ -48,4 +48,12 @@ eventSchema.index({ "images._id": 1 }, { name: "image_id" }); // file lookup by 
 cleanJson(eventSchema);
 
 export type EventDoc = InferSchemaType<typeof eventSchema>;
+/** A stored image subdocument (`filename` never leaves the server). */
+export type EventImageDoc = InferSchemaType<typeof eventImageSchema>;
+export type EventImageLean = EventImageDoc & { _id: Types.ObjectId };
+/** An event as returned by `.lean()`. */
+export type EventLean = Omit<EventDoc, "images"> & {
+  _id: Types.ObjectId;
+  images: EventImageLean[];
+};
 export const EventModel = model("Event", eventSchema);

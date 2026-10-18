@@ -1,25 +1,32 @@
-import type { FilterQuery, Types } from "mongoose";
+import type { FilterQuery, HydratedDocument, Types } from "mongoose";
 import { EventModel, Order, Participant, Payment } from "../../models";
-import type { OrderDoc } from "../../models/order.model";
+import type { OrderDoc, OrderLean } from "../../models/order.model";
+import type { PageMeta } from "../../types/api";
 import { ApiError } from "../../utils/api-error";
 import { bangkokRange } from "../../utils/date-range";
-import { withId } from "../../utils/lean";
 import { escapeRegex, pageMeta, skipOf } from "../../utils/pagination";
-import { withTransaction } from "../../utils/transaction";
 import type {
   AdminOrdersQuery,
   ExportOrdersQuery,
 } from "../../validators/admin.validator";
+import {
+  toAdminOrderDetailView,
+  toAdminOrderView,
+  type AdminOrderDetailView,
+  type AdminOrderView,
+} from "../../views/order.view";
 import { audit } from "../audit.service";
-import { statusesBefore } from "../order-state";
-import { maskedParticipant } from "../participant.service";
 import { transitionAndRelease } from "./order-quota";
+import { statusesBefore } from "./order-state";
 
 const orderNotFound = () =>
   ApiError.notFound("ไม่พบออเดอร์", "ORDER_NOT_FOUND");
 
 /** Loads an order with only the `select`ed fields, or throws ORDER_NOT_FOUND. */
-export async function findOrderOr404(id: string, select: string) {
+export async function findOrderOr404(
+  id: string,
+  select: string,
+): Promise<HydratedDocument<OrderDoc>> {
   const order = await Order.findById(id).select(select);
   if (!order) throw orderNotFound();
   return order;
@@ -39,7 +46,9 @@ export function adminFilter(q: ExportOrdersQuery): FilterQuery<OrderDoc> {
   return filter;
 }
 
-export async function listAdmin(q: AdminOrdersQuery) {
+export async function listAdmin(
+  q: AdminOrdersQuery,
+): Promise<{ data: AdminOrderView[]; meta: PageMeta }> {
   const filter = adminFilter(q);
   const [orders, total] = await Promise.all([
     Order.find(filter)
@@ -52,15 +61,10 @@ export async function listAdmin(q: AdminOrdersQuery) {
   return { data: await decorateOrders(orders), meta: pageMeta(q, total) };
 }
 
-type LeanOrder = {
-  _id: Types.ObjectId;
-  eventId: Types.ObjectId;
-  raceCounts?: unknown;
-  quotaReleased?: unknown;
-};
-
 /** Admin view of lean orders: adds event name/slug and participant count, hides internal quota bookkeeping. */
-export async function decorateOrders<T extends LeanOrder>(orders: T[]) {
+export async function decorateOrders(
+  orders: OrderLean[],
+): Promise<AdminOrderView[]> {
   const ids = orders.map((o) => o._id);
   const [events, counts] = await Promise.all([
     EventModel.find({ _id: { $in: orders.map((o) => o.eventId) } })
@@ -73,18 +77,16 @@ export async function decorateOrders<T extends LeanOrder>(orders: T[]) {
   ]);
   const evMap = new Map(events.map((e) => [String(e._id), e]));
   const nMap = new Map(counts.map((c) => [String(c._id), c.n]));
-  return orders.map((o) => {
-    const event = evMap.get(String(o.eventId));
-    return {
-      ...withId(o, ["raceCounts", "quotaReleased"]),
-      eventName: event?.name ?? "",
-      eventSlug: event?.slug ?? "",
-      participantCount: nMap.get(String(o._id)) ?? 0,
-    };
-  });
+  return orders.map((o) =>
+    toAdminOrderView(
+      o,
+      evMap.get(String(o.eventId)),
+      nMap.get(String(o._id)) ?? 0,
+    ),
+  );
 }
 
-export async function getAdmin(id: string) {
+export async function getAdmin(id: string): Promise<AdminOrderDetailView> {
   const order = await Order.findById(id).lean();
   if (!order) throw orderNotFound();
   const [[decorated], participants, payments] = await Promise.all([
@@ -92,28 +94,25 @@ export async function getAdmin(id: string) {
     Participant.find({ orderId: id }).sort({ _id: 1 }).lean(),
     Payment.find({ orderId: id }).sort({ createdAt: -1 }).lean(),
   ]);
-  return {
-    ...decorated,
-    participants: participants.map((p) => maskedParticipant(p)),
-    payments: payments.map((p) => withId(p, ["slipPath"])),
-  };
+  return toAdminOrderDetailView(decorated, participants, payments);
 }
 
-export async function cancel(actorId: string, id: string, reason?: string) {
+export async function cancel(
+  actorId: string,
+  id: string,
+  reason?: string,
+): Promise<AdminOrderDetailView> {
   await findOrderOr404(id, "status");
-  await withTransaction(async (session) => {
-    const done = await transitionAndRelease(
-      { _id: id, status: { $in: statusesBefore("cancelled") } },
-      "cancelled",
-      { cancelReason: reason },
-      session,
+  const done = await transitionAndRelease(
+    { _id: id, status: { $in: statusesBefore("cancelled") } },
+    "cancelled",
+    { cancelReason: reason },
+  );
+  if (!done)
+    throw ApiError.conflict(
+      "INVALID_STATE",
+      "ออเดอร์นี้ไม่สามารถยกเลิกได้ในสถานะปัจจุบัน",
     );
-    if (!done)
-      throw ApiError.conflict(
-        "INVALID_STATE",
-        "ออเดอร์นี้ไม่สามารถยกเลิกได้ในสถานะปัจจุบัน",
-      );
-  });
   await audit(actorId, "order.cancel", "Order", id, { reason });
   return getAdmin(id);
 }
@@ -123,7 +122,7 @@ export async function setTracking(
   id: string,
   provider: string,
   no: string,
-) {
+): Promise<AdminOrderDetailView> {
   const order = await findOrderOr404(id, "status delivery");
   if (order.delivery !== "shipping")
     throw ApiError.conflict(

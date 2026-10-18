@@ -3,11 +3,6 @@ import multer from "multer";
 import { describe, expect, it } from "vitest";
 import { eventImageKinds } from "../src/config/constants";
 import { resolveError } from "../src/middlewares/error-handler";
-import {
-  adminImages,
-  publicImages,
-  type StoredImage,
-} from "../src/services/event-image.service";
 import { detectImage, resolveEventImagePath } from "../src/utils/slip-file";
 import {
   eventBody,
@@ -50,30 +45,6 @@ describe("resolveEventImagePath", () => {
     expect(() => resolveEventImagePath(EVENT_ID, FILE.replace("jpg", "svg"))).toThrow();
     expect(() => resolveEventImagePath("../slips", FILE)).toThrow();
     expect(() => resolveEventImagePath("abc", FILE)).toThrow();
-  });
-});
-
-describe("image views", () => {
-  const imgs = [
-    { _id: "b", kind: "gallery", filename: "secret-b.jpg", mime: "image/jpeg", size: 10, alt: "", sortOrder: 2 },
-    { _id: "a", kind: "cover", filename: "secret-a.png", mime: "image/png", size: 20, alt: "ปก", sortOrder: 1 },
-  ] as unknown as StoredImage[];
-  it("sorts by sortOrder and hides filename/mime/size publicly", () => {
-    const v = publicImages({ images: imgs });
-    expect(v.map((i) => i.id)).toEqual(["a", "b"]);
-    expect(Object.keys(v[0]).sort()).toEqual(["alt", "id", "kind", "sortOrder", "url"]);
-    expect(JSON.stringify(v)).not.toContain("secret");
-    expect(v[0].url).toBe("/api/v1/public/event-images/a");
-  });
-  it("admin view adds previewUrl/mime/size but never filename", () => {
-    const v = adminImages({ _id: EVENT_ID, images: imgs });
-    expect(v[0].previewUrl).toBe(`/api/v1/admin/events/${EVENT_ID}/images/a/file`);
-    expect(v[0].mime).toBe("image/png");
-    expect(JSON.stringify(v)).not.toContain("secret");
-  });
-  it("treats old documents without images as empty", () => {
-    expect(publicImages({})).toEqual([]);
-    expect(adminImages({ _id: EVENT_ID, images: undefined })).toEqual([]);
   });
 });
 

@@ -1,8 +1,8 @@
 import { Types } from "mongoose";
-import { orderStatuses } from "../config/constants";
 import { EventModel, Order, Race } from "../models";
+import { toDashboardView, type DashboardView } from "../views/dashboard.view";
 
-export async function get(eventId?: string) {
+export async function get(eventId?: string): Promise<DashboardView> {
   const match = eventId ? { eventId: new Types.ObjectId(eventId) } : {};
   const [byStatus, revenueRows, races] = await Promise.all([
     Order.aggregate<{ _id: string; n: number }>([
@@ -23,25 +23,5 @@ export async function get(eventId?: string) {
     .select("name")
     .lean();
   const evName = new Map(events.map((e) => [String(e._id), e.name]));
-  const orders = Object.fromEntries(
-    orderStatuses.map((s) => [s, byStatus.find((b) => b._id === s)?.n ?? 0]),
-  );
-  return {
-    orders,
-    totalOrders: Object.values(orders).reduce((a, b) => a + b, 0),
-    pendingReview: orders.slip_uploaded,
-    paidRevenue: revenueRows[0]?.revenue ?? 0,
-    // Seats held by quota-holding orders (pending/slip_uploaded/rejected included, not just paid).
-    participants: races.reduce((a, r) => a + r.reserved, 0),
-    races: races.map((r) => ({
-      raceId: String(r._id),
-      eventId: String(r.eventId),
-      eventName: evName.get(String(r.eventId)) ?? "",
-      name: r.name,
-      price: r.price,
-      quota: r.quota,
-      reserved: r.reserved,
-      remaining: Math.max(0, r.quota - r.reserved),
-    })),
-  };
+  return toDashboardView(byStatus, revenueRows[0]?.revenue ?? 0, races, evName);
 }

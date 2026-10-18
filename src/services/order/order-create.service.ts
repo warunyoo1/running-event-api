@@ -1,13 +1,13 @@
-import type { Types } from "mongoose";
+import { Types } from "mongoose";
 import { MS_PER_HOUR, PUBLIC_EVENT_STATUSES } from "../../config/constants";
 import { env } from "../../config/env";
 import { EventModel, Order, Participant, Race } from "../../models";
 import type { RaceLean } from "../../models/race.model";
 import { ApiError } from "../../utils/api-error";
+import { runUndo, type Undo } from "../../utils/compensation";
 import { encryptText } from "../../utils/crypto";
 import { bangkokToday } from "../../utils/date-range";
 import { generateOrderNo } from "../../utils/order-no";
-import { withTransaction } from "../../utils/transaction";
 import {
   cleanPhone,
   validateOrderInput,
@@ -15,7 +15,11 @@ import {
   type DeliveryInput,
   type ParticipantInput,
 } from "../../validators/order.validator";
-import { reserveQuota, type RaceCounts } from "./order-quota";
+import {
+  toCreatedOrderView,
+  type CreatedOrderView,
+} from "../../views/order.view";
+import { releaseQuota, reserveQuota, type RaceCounts } from "./order-quota";
 
 /** Extra attempts when a generated order number collides with an existing one. */
 const ORDER_NO_RETRIES = 5;
@@ -91,8 +95,11 @@ async function loadOpenEvent(slug: string) {
   return event;
 }
 
-/** Create an order: validate, atomically reserve quota in a transaction, compute totals server-side. */
-export async function createOrder(slug: string, input: CreateOrderInput) {
+/** Create an order: validate, reserve quota (atomic per race), compute totals server-side. */
+export async function createOrder(
+  slug: string,
+  input: CreateOrderInput,
+): Promise<CreatedOrderView> {
   const event = await loadOpenEvent(slug);
   const races: RaceLean[] = await Race.find({
     eventId: event._id,
@@ -121,52 +128,52 @@ export async function createOrder(slug: string, input: CreateOrderInput) {
 
   for (let attempt = 0; ; attempt++) {
     const orderNo = generateOrderNo();
+    // No transaction (standalone MongoDB): reserve quota first, write the order second, and undo
+    // the earlier writes if a later one fails. Trade-off: a crash mid-request can leave quota
+    // reserved without an order.
+    const orderId = new Types.ObjectId();
+    const raceCounts = [...counts.entries()].map(([raceId, count]) => ({
+      raceId,
+      count,
+    }));
+    await reserveQuota(counts, raceNameById);
+    const undo: Undo[] = [
+      { label: `release quota of ${orderNo}`, run: () => releaseQuota(raceCounts) },
+      { label: `delete order ${orderNo}`, run: () => Order.deleteOne({ _id: orderId }) },
+      { label: `delete participants of ${orderNo}`, run: () => Participant.deleteMany({ orderId }) },
+    ];
     try {
-      await withTransaction(async (session) => {
-        await reserveQuota(counts, raceNameById, session);
-        const [order] = await Order.create(
-          [
-            {
-              orderNo,
-              eventId: event._id,
-              contactName: d.contact.trim(),
-              contactPhone: cleanPhone(d.phone),
-              contactEmail: optionalText(d.email),
-              delivery: d.method,
-              address: addressOf(d),
-              subtotal,
-              shippingFee,
-              amount,
-              status: "pending",
-              expiresAt,
-              raceCounts: [...counts.entries()].map(([raceId, count]) => ({
-                raceId,
-                count,
-              })),
-            },
-          ],
-          { session },
-        );
-        await Participant.insertMany(
-          input.participants.map((p) =>
-            participantRecord(
-              p,
-              raceByName.get(p.race)!,
-              order._id,
-              event._id,
-            ),
-          ),
-          { session },
-        );
-      });
-      return {
+      await Order.create({
+        _id: orderId,
         orderNo,
-        status: "pending" as const,
-        amount: { subtotal, shipping: shippingFee, total: amount },
+        eventId: event._id,
+        contactName: d.contact.trim(),
+        contactPhone: cleanPhone(d.phone),
+        contactEmail: optionalText(d.email),
+        delivery: d.method,
+        address: addressOf(d),
+        subtotal,
+        shippingFee,
+        amount,
+        status: "pending",
         expiresAt,
-      };
+        raceCounts,
+      });
+      await Participant.insertMany(
+        input.participants.map((p) =>
+          participantRecord(p, raceByName.get(p.race)!, orderId, event._id),
+        ),
+      );
+      return toCreatedOrderView({
+        orderNo,
+        subtotal,
+        shippingFee,
+        amount,
+        expiresAt,
+      });
     } catch (err) {
-      // The transaction already rolled back; retry with a new order number.
+      await runUndo(undo);
+      // Retry with a new order number.
       if (isOrderNoCollision(err) && attempt < ORDER_NO_RETRIES) continue;
       throw err;
     }

@@ -1,4 +1,3 @@
-import type { ClientSession } from "mongoose";
 import { AuditLog } from "../models";
 
 export async function audit(
@@ -7,15 +6,10 @@ export async function audit(
   entity: string,
   entityId: string | undefined,
   meta?: Record<string, unknown>,
-  session?: ClientSession,
-) {
+): Promise<void> {
   try {
-    await AuditLog.create(
-      [{ userId, action, entity, entityId, meta }],
-      session ? { session } : undefined,
-    );
+    await AuditLog.create({ userId, action, entity, entityId, meta });
   } catch (err) {
-    if (session) throw err;
     console.error("audit log failed", err);
   }
 }

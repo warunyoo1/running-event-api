@@ -1,4 +1,4 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import { Schema, model, type InferSchemaType, type Types } from "mongoose";
 import { deliveryMethods, orderStatuses } from "../config/constants";
 import { cleanJson } from "./plugins";
 
@@ -53,4 +53,15 @@ orderSchema.index(
 cleanJson(orderSchema);
 
 export type OrderDoc = InferSchemaType<typeof orderSchema>;
+/** Per-race seat count held by an order (see order-quota). */
+export type OrderRaceCount = {
+  raceId?: Types.ObjectId | null;
+  count?: number | null;
+};
+/** An order as returned by `.lean()`. */
+export type OrderLean = Omit<OrderDoc, "raceCounts"> & {
+  _id: Types.ObjectId;
+  raceCounts: OrderRaceCount[];
+};
+export type OrderAddress = NonNullable<OrderDoc["address"]>;
 export const Order = model("Order", orderSchema);

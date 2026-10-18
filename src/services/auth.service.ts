@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env";
 import { User } from "../models";
+import type { UserJson } from "../models/user.model";
 import { ApiError } from "../utils/api-error";
 import { audit } from "./audit.service";
 
@@ -22,7 +23,10 @@ function tokenLifetimeMs(token: string): number {
   return (exp - iat) * 1000;
 }
 
-export async function login(email: string, password: string) {
+export async function login(
+  email: string,
+  password: string,
+): Promise<{ token: string; maxAgeMs: number; user: UserJson }> {
   const user = await User.findOne({ email });
   const ok = await bcrypt.compare(password, user?.passwordHash ?? dummyHash);
   if (!user || !ok || !user.active)
@@ -38,7 +42,7 @@ export async function login(email: string, password: string) {
   return { token, maxAgeMs: tokenLifetimeMs(token), user: user.toJSON() };
 }
 
-export async function getMe(userId: string) {
+export async function getMe(userId: string): Promise<UserJson> {
   const user = await User.findById(userId);
   if (!user) throw ApiError.unauthorized();
   return user.toJSON();
@@ -48,7 +52,7 @@ export async function changePassword(
   userId: string,
   currentPassword: string,
   newPassword: string,
-) {
+): Promise<void> {
   const user = await User.findById(userId);
   if (!user) throw ApiError.unauthorized();
   if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {

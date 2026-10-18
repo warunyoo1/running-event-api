@@ -1,6 +1,5 @@
 import { EXPIRY_BATCH_SIZE, EXPIRY_INTERVAL_MS } from "../config/constants";
 import { Order } from "../models";
-import { withTransaction } from "../utils/transaction";
 import { transitionAndRelease } from "./order/order-quota";
 
 /** Expires overdue `pending` orders and releases their quota. Slip-uploaded orders never auto-expire. */
@@ -15,13 +14,10 @@ export async function expireOverdue(now = new Date()): Promise<number> {
   let expired = 0;
   for (const o of overdue) {
     try {
-      const done = await withTransaction((session) =>
-        transitionAndRelease(
-          { _id: o._id, status: "pending", expiresAt: { $lt: now } },
-          "expired",
-          {},
-          session,
-        ),
+      const done = await transitionAndRelease(
+        { _id: o._id, status: "pending", expiresAt: { $lt: now } },
+        "expired",
+        {},
       );
       if (done) expired++;
     } catch (err) {
@@ -33,7 +29,9 @@ export async function expireOverdue(now = new Date()): Promise<number> {
 }
 
 let running = false;
-export function startExpiryJob(intervalMs = EXPIRY_INTERVAL_MS) {
+export function startExpiryJob(
+  intervalMs = EXPIRY_INTERVAL_MS,
+): NodeJS.Timeout {
   const timer = setInterval(async () => {
     if (running) return;
     running = true;

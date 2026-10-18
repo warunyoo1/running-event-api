@@ -7,12 +7,12 @@ import {
   resolveSlipPath,
   saveSlip,
 } from "../utils/slip-file";
-import { withTransaction } from "../utils/transaction";
+import { toSlipSubmittedView, type SlipSubmittedView } from "../views/slip.view";
 import {
   isOverduePending,
   loadByOrderNoAndPhone,
 } from "./order/order-public.service";
-import { statusesBefore } from "./order-state";
+import { statusesBefore } from "./order/order-state";
 
 const SLIP_NOT_FOUND = () =>
   ApiError.notFound("ไม่พบสลิป", "SLIP_NOT_FOUND");
@@ -26,7 +26,7 @@ export async function submitSlip(
   orderNo: string,
   phoneLast4: string,
   file?: Express.Multer.File,
-) {
+): Promise<SlipSubmittedView> {
   const order = await loadByOrderNoAndPhone(orderNo, phoneLast4);
   if (!file) throw ApiError.validation({ slip: "กรุณาแนบไฟล์สลิป" });
   const kind = detectImage(file.buffer);
@@ -43,44 +43,45 @@ export async function submitSlip(
   if (!from.includes(order.status)) throw CANNOT_UPLOAD();
 
   const name = await saveSlip(file.buffer, kind.ext);
+  // No transaction: create the new payment first, then flip the order (the guarded step), then
+  // supersede older payments. A failure before the flip removes the new payment and the file.
+  let paymentId: unknown;
   try {
-    await withTransaction(async (session) => {
-      const res = await Order.updateOne(
-        { _id: order._id, status: { $in: from } },
-        {
-          $set: { status: "slip_uploaded", slipUploadedAt: new Date() },
-          $unset: { rejectionReason: "" },
-        },
-        { session },
-      );
-      if (res.modifiedCount === 0) throw CANNOT_UPLOAD();
-      await Payment.updateMany(
-        { orderId: order._id, status: "submitted" },
-        { $set: { status: "superseded" } },
-        { session },
-      );
-      await Payment.create(
-        [
-          {
-            orderId: order._id,
-            slipPath: name,
-            slipMime: kind.mime,
-            amount: order.amount,
-            status: "submitted",
-          },
-        ],
-        { session },
-      );
+    const payment = await Payment.create({
+      orderId: order._id,
+      slipPath: name,
+      slipMime: kind.mime,
+      amount: order.amount,
+      status: "submitted",
     });
+    paymentId = payment._id;
+    const res = await Order.updateOne(
+      { _id: order._id, status: { $in: from } },
+      {
+        $set: { status: "slip_uploaded", slipUploadedAt: new Date() },
+        $unset: { rejectionReason: "" },
+      },
+    );
+    if (res.modifiedCount === 0) throw CANNOT_UPLOAD();
   } catch (err) {
     await deleteSlip(name); // no orphan file
+    if (paymentId)
+      await Payment.deleteOne({ _id: paymentId }).catch((e) =>
+        console.error("payment cleanup failed", e),
+      );
     throw err;
   }
-  return { orderNo: order.orderNo, status: "slip_uploaded" as const };
+  await Payment.updateMany(
+    { orderId: order._id, status: "submitted", _id: { $ne: paymentId } },
+    { $set: { status: "superseded" } },
+  );
+  return toSlipSubmittedView(order);
 }
 
 /** Resolve a payment's slip to a safe on-disk path. */
-export async function getSlipFile(paymentId: string) {
+export async function getSlipFile(
+  paymentId: string,
+): Promise<{ fullPath: string; mime: string }> {
   const payment = await Payment.findById(paymentId).lean();
   if (!payment) throw SLIP_NOT_FOUND();
   try {
