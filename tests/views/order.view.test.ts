@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import * as F from "../fixtures/view-fixtures";
-import { toAdminOrderView, toPublicOrderView } from "../../src/views/order.view";
+import {
+  toAdminOrderDetailView,
+  toAdminOrderView,
+  toPublicOrderView,
+  type AdminOrderDetailExtras,
+} from "../../src/views/order.view";
 
 describe("toAdminOrderView", () => {
   it("hides quota bookkeeping and adds event name, slug and participant count", () => {
@@ -34,5 +39,41 @@ describe("toPublicOrderView", () => {
     expect(v.canUploadSlip).toBe(false);
     expect(v.event).toBeNull();
     expect(v.amount).toEqual({ subtotal: 800, shipping: 50, total: 850 });
+  });
+});
+
+describe("toAdminOrderDetailView", () => {
+  const base = () => toAdminOrderView(F.paidOrder, F.event, 2);
+  const extras: AdminOrderDetailExtras = {
+    reviewedByName: "Rita Reviewer",
+    canEditAddress: false,
+    notes: [],
+    timeline: [],
+  };
+
+  it("without extras has exactly the original keys, with participants and payments last", () => {
+    const keys = Object.keys(toAdminOrderDetailView(base(), F.participants, [F.payment]));
+    expect(keys.slice(-2)).toEqual(["participants", "payments"]);
+    expect(keys).not.toContain("reviewedByName");
+    expect(keys).not.toContain("canEditAddress");
+    expect(keys).not.toContain("notes");
+    expect(keys).not.toContain("timeline");
+  });
+
+  it("with extras appends reviewedByName, canEditAddress, notes, timeline after payments", () => {
+    const plain = toAdminOrderDetailView(base(), F.participants, [F.payment]);
+    const full = toAdminOrderDetailView(base(), F.participants, [F.payment], extras);
+    expect(Object.keys(full)).toEqual([
+      ...Object.keys(plain),
+      "reviewedByName",
+      "canEditAddress",
+      "notes",
+      "timeline",
+    ]);
+    expect(JSON.stringify({ ...full, reviewedByName: undefined, canEditAddress: undefined, notes: undefined, timeline: undefined })).toBe(
+      JSON.stringify(plain),
+    );
+    expect(full.reviewedByName).toBe("Rita Reviewer");
+    expect(full.canEditAddress).toBe(false);
   });
 });

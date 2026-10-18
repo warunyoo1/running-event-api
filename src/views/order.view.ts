@@ -7,6 +7,8 @@ import {
   toParticipantView,
   type ParticipantView,
 } from "./participant.view";
+import type { OrderNoteView } from "./order-note.view";
+import type { OrderTimelineEntry } from "./order-timeline.view";
 import { toPaymentView, type PaymentView } from "./payment.view";
 
 /** Admin order: hides internal quota bookkeeping, adds event name/slug and participant count. */
@@ -69,15 +71,49 @@ export const toAdminOrderView = (
   participantCount,
 });
 
-export const toAdminOrderDetailView = (
+/** Appended after `payments` when the detail is built with notes and timeline. */
+export interface AdminOrderDetailExtras {
+  reviewedByName: string | null;
+  canEditAddress: boolean;
+  notes: OrderNoteView[];
+  timeline: OrderTimelineEntry[];
+}
+
+export type AdminOrderFullDetailView = AdminOrderDetailView &
+  AdminOrderDetailExtras;
+
+/** Without `extras` the output is exactly the original detail; with them the four keys follow `payments`. */
+export function toAdminOrderDetailView(
   order: AdminOrderView,
   participants: readonly ParticipantLean[],
   payments: readonly PaymentLean[],
-): AdminOrderDetailView => ({
-  ...order,
-  participants: participants.map((p) => toParticipantView(p)),
-  payments: payments.map((p) => toPaymentView(p)),
-});
+): AdminOrderDetailView;
+export function toAdminOrderDetailView(
+  order: AdminOrderView,
+  participants: readonly ParticipantLean[],
+  payments: readonly PaymentLean[],
+  extras: AdminOrderDetailExtras,
+): AdminOrderFullDetailView;
+export function toAdminOrderDetailView(
+  order: AdminOrderView,
+  participants: readonly ParticipantLean[],
+  payments: readonly PaymentLean[],
+  extras?: AdminOrderDetailExtras,
+): AdminOrderDetailView | AdminOrderFullDetailView {
+  const base: AdminOrderDetailView = {
+    ...order,
+    participants: participants.map((p) => toParticipantView(p)),
+    payments: payments.map((p) => toPaymentView(p)),
+  };
+  if (!extras) return base;
+  return {
+    ...base,
+    reviewedByName: extras.reviewedByName,
+    canEditAddress: extras.canEditAddress,
+    notes: extras.notes,
+    timeline: extras.timeline,
+  };
+}
 
 export const toCreatedOrderView = (
   o: Pick<OrderLean, "orderNo" | "subtotal" | "shippingFee" | "amount"> & {

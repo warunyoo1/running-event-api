@@ -65,6 +65,7 @@ export async function changePassword(
       newPassword: "รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม",
     });
   user.passwordHash = await bcrypt.hash(newPassword, env.BCRYPT_COST);
+  user.mustChangePassword = false;
   await user.save();
   await audit(userId, "auth.change_password", "User", userId);
 }

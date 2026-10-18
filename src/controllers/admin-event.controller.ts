@@ -6,7 +6,7 @@ import {
   validatedQuery,
 } from "../middlewares/validate";
 import * as eventService from "../services/event.service";
-import { created, ok } from "../utils/response";
+import { created, done, ok } from "../utils/response";
 import type { IdParams } from "../validators/common.validator";
 import type {
   AdminEventsQuery,
@@ -40,4 +40,20 @@ export async function update(req: Request, res: Response) {
       validatedBody<EventBody>(req),
     ),
   );
+}
+export async function archive(req: Request, res: Response) {
+  ok(
+    res,
+    await eventService.archive(req.user!.id, validatedParams<IdParams>(res).id),
+  );
+}
+export async function restore(req: Request, res: Response) {
+  ok(
+    res,
+    await eventService.restore(req.user!.id, validatedParams<IdParams>(res).id),
+  );
+}
+export async function remove(req: Request, res: Response) {
+  await eventService.remove(req.user!.id, validatedParams<IdParams>(res).id);
+  done(res, "ลบงานวิ่งแล้ว");
 }

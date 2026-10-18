@@ -2,13 +2,19 @@ import { EXPORT_LIMIT } from "../config/constants";
 import { Order } from "../models";
 import { toCsv } from "../utils/csv";
 import type {
+  DashboardQuery,
   ExportOrdersQuery,
   ExportParticipantsQuery,
   ExportShippingQuery,
+  ShirtSizesQuery,
 } from "../validators/admin.validator";
+import type { DashboardView } from "../views/dashboard.view";
+import type { ShirtSizeReportView } from "../views/report.view";
 import type { ShippingRowView } from "../views/shipping.view";
 import { adminFilter, decorateOrders } from "./order/order-admin.service";
+import * as dashboardService from "./dashboard.service";
 import * as participantService from "./participant.service";
+import * as reportService from "./report.service";
 import * as shippingService from "./shipping.service";
 
 const iso = (d?: Date | null): string => (d ? new Date(d).toISOString() : "");
@@ -159,4 +165,34 @@ export async function fulfillmentCsv(
       ]),
     ),
   ]);
+}
+
+/** Rows of the dashboard overview export, same as the browser used to build. */
+export function overviewRows(data: DashboardView): (string | number)[][] {
+  return [
+    ["รายการ", "จำนวน"],
+    ["ที่นั่งที่จอง", data.participants],
+    ["ยอดชำระแล้ว", data.paidRevenue],
+    ["สลิปรอตรวจ", data.pendingReview],
+    ...data.races.map((race): (string | number)[] => [
+      `${race.eventName} · ${race.name} (จอง/โควตา)`,
+      `${race.reserved}/${race.quota}`,
+    ]),
+  ];
+}
+
+/** Rows of the shirt size export: one row per size, zeros included. */
+export function shirtSizeRows(report: ShirtSizeReportView): (string | number)[][] {
+  return [
+    ["ไซซ์เสื้อ", "จำนวน"],
+    ...report.sizes.map((s): (string | number)[] => [s.size, s.count]),
+  ];
+}
+
+export async function overviewCsv(q: DashboardQuery): Promise<string> {
+  return toCsv(overviewRows(await dashboardService.get(q.eventId)));
+}
+
+export async function shirtSizesCsv(q: ShirtSizesQuery): Promise<string> {
+  return toCsv(shirtSizeRows(await reportService.shirtSizeReport(q)));
 }

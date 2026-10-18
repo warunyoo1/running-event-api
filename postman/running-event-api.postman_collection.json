@@ -64,6 +64,18 @@
     {
       "key": "imageUrl",
       "value": ""
+    },
+    {
+      "key": "noteId",
+      "value": ""
+    },
+    {
+      "key": "deleteEventId",
+      "value": ""
+    },
+    {
+      "key": "deleteUserId",
+      "value": ""
     }
   ],
   "item": [
@@ -699,6 +711,142 @@
               ]
             },
             "description": "เฉพาะ super_admin. ส่ง body เต็มเหมือนตอนสร้าง"
+          }
+        },
+        {
+          "name": "List Archived Events",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events?archived=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "archived",
+                  "value": "true",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "งานที่เก็บถาวร (เปิด query archived เพื่อใช้) เฉพาะ S R V"
+          }
+        },
+        {
+          "name": "Archive Event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/{{eventId}}/archive",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "{{eventId}}",
+                "archive"
+              ]
+            },
+            "description": "เฉพาะ super_admin ซ้ำได้"
+          }
+        },
+        {
+          "name": "Restore Event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/{{eventId}}/restore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "{{eventId}}",
+                "restore"
+              ]
+            },
+            "description": "เฉพาะ super_admin ซ้ำได้"
+          }
+        },
+        {
+          "name": "Delete Event (permanent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/events/{{deleteEventId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "events",
+                "{{deleteEventId}}"
+              ]
+            },
+            "description": "ลบถาวร ใช้ตัวแปร deleteEventId ของงานทดสอบเท่านั้น (409 EVENT_HAS_ORDERS ถ้ามีออเดอร์, 409 EVENT_QUOTA_RESERVED ถ้าโควตาถูกจองค้าง)"
           }
         }
       ]
@@ -1393,6 +1541,136 @@
             },
             "description": "ปฏิเสธสลิป ต้องระบุเหตุผล"
           }
+        },
+        {
+          "name": "Update Address",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders/{{orderId}}/address",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "orders",
+                "{{orderId}}",
+                "address"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"street\": \"99/9 ถนนสุขุมวิท\",\n  \"subdistrict\": \"คลองตัน\",\n  \"district\": \"คลองเตย\",\n  \"province\": \"กรุงเทพมหานคร\",\n  \"postalCode\": \"10110\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "เฉพาะออเดอร์จัดส่งที่ยังไม่มีเลขพัสดุ และสถานะ pending / slip_uploaded / rejected / paid (409 INVALID_STATE)"
+          }
+        },
+        {
+          "name": "Add Note",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\",()=>pm.response.to.have.status(201));",
+                  "const notes=(pm.response.json().data||{}).notes||[];",
+                  "if(notes.length)pm.collectionVariables.set(\"noteId\",notes[notes.length-1].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders/{{orderId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "orders",
+                "{{orderId}}",
+                "notes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"โทรยืนยันที่อยู่แล้ว\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "บันทึกภายใน 1-1000 ตัวอักษร (422 NOTE_LIMIT_REACHED เมื่อครบ 100)"
+          }
+        },
+        {
+          "name": "Delete Note",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/orders/{{orderId}}/notes/{{noteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "orders",
+                "{{orderId}}",
+                "notes",
+                "{{noteId}}"
+              ]
+            },
+            "description": "super_admin ลบได้ทุกอัน reviewer ลบได้เฉพาะของตัวเอง"
+          }
         }
       ]
     },
@@ -1631,10 +1909,15 @@
                   "key": "method",
                   "value": "shipping",
                   "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true
                 }
               ]
             },
-            "description": "method: pickup|shipping"
+            "description": "method: pickup|shipping q ค้นหาทุกหน้า: ชื่อผู้สมัคร เลข BIB เลขออเดอร์ ชื่อ/เบอร์ผู้ติดต่อ เลขพัสดุ (ต้องใช้ MongoDB 5.0+)"
           }
         }
       ]
@@ -1929,10 +2212,98 @@
                   "key": "method",
                   "value": "shipping",
                   "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true
                 }
               ]
             },
             "description": ""
+          }
+        },
+        {
+          "name": "Export Overview CSV",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/export/overview.csv?eventId={{eventId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "export",
+                "overview.csv"
+              ],
+              "query": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "ค่าเดียวกับ dashboard (BOM CSV)"
+          }
+        },
+        {
+          "name": "Export Shirt Sizes CSV",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/export/shirt-sizes.csv?eventId={{eventId}}&status=paid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "export",
+                "shirt-sizes.csv"
+              ],
+              "query": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "paid",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "จำนวนเสื้อตามไซส์ (BOM CSV)"
           }
         }
       ]
@@ -2062,6 +2433,149 @@
               ]
             },
             "description": "ส่งเฉพาะ field ที่แก้ (name, role, active, password) ห้ามส่ง field อื่น (strict)"
+          }
+        },
+        {
+          "name": "Delete User (permanent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/users/{{deleteUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "users",
+                "{{deleteUserId}}"
+              ]
+            },
+            "description": "ผู้ใช้ต้องปิดใช้งานแล้วและไม่มีประวัติ (409 USER_STILL_ACTIVE / USER_HAS_HISTORY / CANNOT_DELETE_SELF)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Audit logs",
+      "item": [
+        {
+          "name": "List Audit Logs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/audit-logs?page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "audit-logs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "เฉพาะ super_admin ใหม่สุดก่อน"
+          }
+        },
+        {
+          "name": "List Audit Logs (filtered)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/audit-logs?entity=Order&entityId={{orderId}}&action=order.note.add&userId=&from=&to=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "audit-logs"
+              ],
+              "query": [
+                {
+                  "key": "entity",
+                  "value": "Order",
+                  "disabled": false
+                },
+                {
+                  "key": "entityId",
+                  "value": "{{orderId}}",
+                  "disabled": false
+                },
+                {
+                  "key": "action",
+                  "value": "order.note.add",
+                  "disabled": true
+                },
+                {
+                  "key": "userId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "filter ได้ด้วย userId, action, entity (User|Event|Order|Participant), entityId, from, to"
           }
         }
       ]

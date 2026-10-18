@@ -19,6 +19,7 @@ import {
   toCreatedOrderView,
   type CreatedOrderView,
 } from "../../views/order.view";
+import { trimAddress } from "./order-address";
 import { releaseQuota, reserveQuota, type RaceCounts } from "./order-quota";
 
 /** Extra attempts when a generated order number collides with an existing one. */
@@ -26,16 +27,8 @@ const ORDER_NO_RETRIES = 5;
 
 const optionalText = (value: string) => value.trim() || undefined;
 
-function addressOf(d: DeliveryInput) {
-  if (d.method !== "shipping") return undefined;
-  return {
-    street: d.street.trim(),
-    subdistrict: d.subdistrict.trim(),
-    district: d.district.trim(),
-    province: d.province,
-    postalCode: d.postalCode.trim(),
-  };
-}
+const addressOf = (d: DeliveryInput) =>
+  d.method === "shipping" ? trimAddress(d) : undefined;
 
 function participantRecord(
   p: ParticipantInput,

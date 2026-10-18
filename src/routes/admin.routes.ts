@@ -1,4 +1,5 @@
 import { Router } from "express";
+import * as auditLogs from "../controllers/audit-log.controller";
 import * as auth from "../controllers/auth.controller";
 import * as dashboard from "../controllers/dashboard.controller";
 import * as eventImages from "../controllers/admin-event-image.controller";
@@ -89,6 +90,9 @@ adminRoutes.put(
   validate({ params: objectIdParam, body: eventBody }),
   events.update,
 );
+adminRoutes.post("/events/:id/archive", superOnly, id, events.archive);
+adminRoutes.post("/events/:id/restore", superOnly, id, events.restore);
+adminRoutes.delete("/events/:id", superOnly, id, events.remove);
 
 // --- event images (writes: super_admin only; multipart upload runs after auth + role) ---
 adminRoutes.get("/events/:id/images", read, id, eventImages.list);
@@ -147,6 +151,24 @@ adminRoutes.patch(
   write,
   validate({ params: objectIdParam, body: v.trackingBody }),
   orders.tracking,
+);
+adminRoutes.patch(
+  "/orders/:id/address",
+  write,
+  validate({ params: objectIdParam, body: v.addressBody }),
+  orders.address,
+);
+adminRoutes.post(
+  "/orders/:id/notes",
+  write,
+  validate({ params: objectIdParam, body: v.noteBody }),
+  orders.addNote,
+);
+adminRoutes.delete(
+  "/orders/:id/notes/:noteId",
+  write,
+  validate({ params: v.noteParams }),
+  orders.removeNote,
 );
 adminRoutes.post(
   "/orders/:id/approve",
@@ -224,6 +246,18 @@ adminRoutes.get(
   validate({ query: v.exportShippingQuery }),
   exports_.fulfillment,
 );
+adminRoutes.get(
+  "/export/overview.csv",
+  read,
+  validate({ query: v.dashboardQuery }),
+  exports_.overview,
+);
+adminRoutes.get(
+  "/export/shirt-sizes.csv",
+  read,
+  validate({ query: v.shirtSizesQuery }),
+  exports_.shirtSizes,
+);
 
 // --- users ---
 adminRoutes.get("/users", superOnly, users.list);
@@ -238,6 +272,15 @@ adminRoutes.patch(
   superOnly,
   validate({ params: objectIdParam, body: updateUserBody }),
   users.update,
+);
+adminRoutes.delete("/users/:id", superOnly, id, users.remove);
+
+// --- audit ---
+adminRoutes.get(
+  "/audit-logs",
+  superOnly,
+  validate({ query: v.auditLogsQuery }),
+  auditLogs.list,
 );
 
 addMethodNotAllowed(adminRoutes);

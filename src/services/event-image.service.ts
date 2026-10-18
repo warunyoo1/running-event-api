@@ -231,7 +231,7 @@ export async function getImageFile(
   adminEventId?: string,
 ): Promise<{ fullPath: string; mime: string }> {
   const filter = adminEventId
-    ? { _id: adminEventId, archived: false, "images._id": imageId }
+    ? { _id: adminEventId, "images._id": imageId } // archived events keep their admin thumbnails
     : {
         archived: false,
         status: { $in: [...PUBLIC_EVENT_STATUSES] },

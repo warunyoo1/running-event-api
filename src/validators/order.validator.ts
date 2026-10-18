@@ -129,6 +129,28 @@ export function validateParticipant(
   return errors;
 }
 
+/** Shipping address rules, shared by checkout (validateDelivery) and the admin address edit. */
+export function validateAddress(
+  draft: Pick<
+    DeliveryInput,
+    "street" | "subdistrict" | "district" | "province" | "postalCode"
+  >,
+): FieldErrors {
+  const errors: FieldErrors = {};
+  for (const [key, label] of [
+    ["street", "ที่อยู่"],
+    ["subdistrict", "ตำบล / แขวง"],
+    ["district", "อำเภอ / เขต"],
+  ] as const) {
+    if (!draft[key].trim()) errors[key] = `กรุณากรอก${label}`;
+  }
+  if (!provinces.includes(draft.province))
+    errors.province = "กรุณาเลือกจังหวัด";
+  if (!/^\d{5}$/.test(draft.postalCode.trim()))
+    errors.postalCode = "รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก";
+  return errors;
+}
+
 /** Port of registration.ts validateDelivery. */
 export function validateDelivery(draft: DeliveryInput): FieldErrors {
   const errors: FieldErrors = {};
@@ -137,19 +159,7 @@ export function validateDelivery(draft: DeliveryInput): FieldErrors {
     errors.phone = "กรุณากรอกเบอร์โทรศัพท์ที่ถูกต้อง";
   if (draft.email.trim() && !validEmail(draft.email))
     errors.email = "กรุณากรอกอีเมลให้ถูกต้อง";
-  if (draft.method === "shipping") {
-    for (const [key, label] of [
-      ["street", "ที่อยู่"],
-      ["subdistrict", "ตำบล / แขวง"],
-      ["district", "อำเภอ / เขต"],
-    ] as const) {
-      if (!draft[key].trim()) errors[key] = `กรุณากรอก${label}`;
-    }
-    if (!provinces.includes(draft.province))
-      errors.province = "กรุณาเลือกจังหวัด";
-    if (!/^\d{5}$/.test(draft.postalCode.trim()))
-      errors.postalCode = "รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก";
-  }
+  if (draft.method === "shipping") Object.assign(errors, validateAddress(draft));
   return errors;
 }
 

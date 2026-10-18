@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { validatedBody, validatedParams } from "../middlewares/validate";
 import * as userService from "../services/user.service";
-import { created, ok } from "../utils/response";
+import { created, done, ok } from "../utils/response";
 import type { IdParams } from "../validators/common.validator";
 import type {
   CreateUserBody,
@@ -16,6 +16,10 @@ export async function create(req: Request, res: Response) {
     res,
     await userService.create(req.user!.id, validatedBody<CreateUserBody>(req)),
   );
+}
+export async function remove(req: Request, res: Response) {
+  await userService.remove(req.user!.id, validatedParams<IdParams>(res).id);
+  done(res, "ลบผู้ใช้แล้ว");
 }
 export async function update(req: Request, res: Response) {
   ok(

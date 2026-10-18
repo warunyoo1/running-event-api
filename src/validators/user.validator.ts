@@ -17,6 +17,13 @@ export type CreateUserBody = z.infer<typeof createUserBody>;
 export const updateUserBody = z
   .object({
     name: z.string().trim().min(1).max(100).optional(),
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .email("อีเมลไม่ถูกต้อง")
+      .max(200)
+      .optional(),
     role: z.enum(roles).optional(),
     active: z.boolean().optional(),
     password: password.optional(),

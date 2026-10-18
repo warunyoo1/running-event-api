@@ -18,7 +18,13 @@ export const eventThemes = ["orange", "green", "blue", "pink", "navy", "sand"] a
 /** Applied when an event has no category/theme (model default, views, and an explicit `null` clear). */
 export const DEFAULT_EVENT_CATEGORY: (typeof eventCategories)[number] = "road";
 export const DEFAULT_EVENT_THEME: (typeof eventThemes)[number] = "orange";
+/** Entity names written to the audit log (`audit(userId, action, entity, ...)`). */
+export const AUDIT_ENTITIES = ["User", "Event", "Order", "Participant"] as const;
 export const deliveryMethods = ["pickup", "shipping"] as const;
+
+/** Internal admin notes on an order (keep ORDER_NOTE_MAX in sync with the admin UI constants). */
+export const ORDER_NOTE_MAX = 1000;
+export const ORDER_NOTES_MAX_PER_ORDER = 100;
 
 /** Event image kinds (keep in sync with the admin UI constants). */
 export const eventImageKinds = ["cover", "poster", "gallery", "route_map", "shirt", "medal", "sponsor", "other"] as const;

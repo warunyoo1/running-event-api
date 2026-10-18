@@ -15,6 +15,7 @@ const userSchema = new Schema(
     role: { type: String, enum: roles, required: true },
     active: { type: Boolean, default: true },
     lastLoginAt: { type: Date },
+    mustChangePassword: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

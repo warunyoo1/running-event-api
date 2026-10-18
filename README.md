@@ -29,11 +29,16 @@ src/
       order-public.service.ts   ค้นหาออเดอร์ด้วย orderNo + phoneLast4
       order-admin.service.ts    list/detail/cancel/tracking ของแอดมิน, adminFilter, findOrderOr404
       order-quota.ts            จอง/คืนโควตา (ใช้ร่วมกันทั้ง create, cancel, expiry)
-      order-state.ts            state machine ของสถานะออเดอร์ (transitions, QUOTA_HOLDING)
+      order-state.ts            state machine ของสถานะออเดอร์ (transitions, QUOTA_HOLDING, canEditAddress)
+      order-detail.service.ts   โหลด notes + timeline ประกอบรายละเอียดออเดอร์ฝั่งแอดมิน
+      order-notes.service.ts    เพิ่ม/ลบบันทึกภายในของออเดอร์
+      order-address.ts          trimAddress ใช้ร่วมกันระหว่าง checkout และแก้ที่อยู่
     event.service.ts     barrel ให้ controller import (re-export จาก services/event/*)
     event/
       event-read.service.ts     list/detail ของ public และ admin
-      event-write.service.ts    create/update พร้อม races (ไม่มี transaction, ทำ compensation เมื่อล้มเหลว)
+      event-write.service.ts    create/update/archive/restore/remove พร้อม races (ไม่มี transaction, ทำ compensation เมื่อล้มเหลว)
+      event-fields.ts           ฟังก์ชัน pure แยก $set/$unset ของ event และ race (null = ล้างค่า)
+    audit-log.service.ts เลือกอ่านประวัติการใช้งาน (GET /admin/audit-logs)
     service-errors.ts    error ที่หลาย service ใช้ร่วมกัน (eventNotFound)
     review / slip / event-image / participant / shipping / dashboard / report / export / user / auth / audit / expiry
   views/                 แปลงเอกสารจาก DB เป็น JSON ของ response: <aggregate>.view.ts, ฟังก์ชัน pure toXxxView/toXxxViews + type ของ view
@@ -148,6 +153,7 @@ npm run dev                     # http://localhost:4000/health
 - ข้อแลกเปลี่ยนที่ยอมรับ: ถ้ามี request พร้อมกันหรือ process ล่มกลางคัน อาจเกิดโควตาค้างหรือจองซ้อนได้ในกรณีที่เกิดยาก
 - `docker-compose.yml` มี service `mongo` เป็น standalone ไม่ได้ publish port ถ้าจะรัน `npm run dev` บนเครื่องโดยใช้ mongo ตัวนี้ ให้สร้าง `docker-compose.override.yml` (อย่า commit) แล้ว map `127.0.0.1:27017:27017`
 - (ทางเลือก) จะใช้ replica set ก็ได้ ระบบไม่บังคับ
+- **ต้องใช้ MongoDB 5.0 ขึ้นไป**: การค้นหาในหน้าจัดส่ง (`GET /admin/shipping?q=`) ใช้ `$lookup` แบบ `localField`/`foreignField` ร่วมกับ `pipeline` และ `$regexMatch` ซึ่งใช้ได้ตั้งแต่ 5.0 (`docker-compose.yml` ใช้ `mongo:7`) ถ้า server จริงเป็นรุ่นเก่ากว่า 5.0 ต้องเปลี่ยน `$lookup` เป็นแบบ `let` + `$expr`
 
 ## รันด้วย Docker Compose
 
@@ -399,6 +405,19 @@ type ฝั่ง TypeScript อยู่ที่ `src/types/api.ts` (`ApiSucce
   `QUOTA_FULL` / `INVALID_STATE` / `SLUG_TAKEN` / `EVENT_HAS_ORDERS` / `DUPLICATE_TRANSACTION_REF` / `DUPLICATE_BIB` / `LAST_SUPER_ADMIN` 409,
   `UNSUPPORTED_FILE_TYPE` 415, `FILE_TOO_LARGE` 413, `RATE_LIMITED` 429
 
+### รหัส error ของส่วนแอดมิน
+
+| Status | `error.code` | เมื่อ |
+|---|---|---|
+| 403 | `FORBIDDEN` | reviewer ลบบันทึกของคนอื่น หรือ role ไม่พอ |
+| 404 | `NOTE_NOT_FOUND`, `USER_NOT_FOUND` | ไม่พบบันทึก/ผู้ใช้ |
+| 409 | `EVENT_HAS_ORDERS` | ลบงานถาวรไม่ได้เพราะมีออเดอร์ (ให้เก็บถาวรแทน) |
+| 409 | `EVENT_QUOTA_RESERVED` | ลบงานไม่ได้เพราะมีโควตาถูกจองค้าง |
+| 409 | `USER_HAS_HISTORY` | ลบผู้ใช้ไม่ได้เพราะมีประวัติ (audit, ตรวจสลิป, บันทึกออเดอร์) |
+| 409 | `USER_STILL_ACTIVE` | ต้องปิดใช้งานผู้ใช้ก่อนลบ |
+| 409 | `CANNOT_DELETE_SELF`, `CANNOT_MODIFY_SELF` | ลบ/ปิดใช้งาน/เปลี่ยนบทบาทบัญชีตัวเองไม่ได้ |
+| 422 | `NOTE_LIMIT_REACHED` | ออเดอร์มีบันทึกครบ 100 รายการ |
+
 ## Endpoints (prefix `/api/v1`)
 
 สิทธิ์: S = super_admin, R = reviewer, V = viewer
@@ -423,29 +442,37 @@ type ฝั่ง TypeScript อยู่ที่ `src/types/api.ts` (`ApiSucce
 | POST | `/admin/auth/logout` | ทุก role | ล้าง cookie (200 พร้อม envelope, `data: null`) |
 | GET | `/admin/auth/me` | ทุก role | ข้อมูลผู้ใช้ปัจจุบัน |
 | POST | `/admin/auth/change-password` | ทุก role | เปลี่ยนรหัสผ่าน (≥ 10 ตัวอักษร) 200 พร้อม envelope, `data: null` |
-| GET | `/admin/events`, `/admin/events/:id` | S R V | รายการ/รายละเอียดงาน พร้อม `orderCount` |
+| GET | `/admin/events`, `/admin/events/:id` | S R V | รายการ/รายละเอียดงาน พร้อม `orderCount` list รับ `archived=true\|false` (ค่าเริ่มต้น false) ส่วน `:id` เปิดดูงานที่เก็บถาวรได้ `category`/`theme` มีใน response เสมอ (ค่าเริ่มต้น `road` / `orange`) |
+| POST | `/admin/events/:id/archive`, `/admin/events/:id/restore` | S | เก็บถาวร/กู้คืนงาน (ซ้ำได้ ไม่เกิดผลเพิ่ม) |
+| DELETE | `/admin/events/:id` | S | ลบงานถาวรพร้อมระยะและไฟล์รูป ตอบ 200 `data: null` (409 `EVENT_HAS_ORDERS` ถ้ามีออเดอร์ใด ๆ, 409 `EVENT_QUOTA_RESERVED` ถ้ามีโควตาถูกจองค้าง) |
 | POST | `/admin/events` | S | สร้างงาน + ระยะ ตอบ 201 + header `Location` (409 `SLUG_TAKEN` ถ้า slug ซ้ำ) |
-| PUT | `/admin/events/:id` | S | แก้งาน (409 `EVENT_HAS_ORDERS` ถ้าแก้ราคา/โควตา/ลบ/เปลี่ยนชื่อระยะหลังมีออเดอร์) |
-| GET | `/admin/orders`, `/admin/orders/:id` | S R V | filter: `eventId, status, q, from, to, page, pageSize` |
+| PUT | `/admin/events/:id` | S | แก้งาน (409 `EVENT_HAS_ORDERS` ถ้าแก้ราคา/โควตา/ลบ/เปลี่ยนชื่อระยะหลังมีออเดอร์) ส่ง `null` เพื่อล้าง `registrationEnds` และ `races[].start` ส่วน `category`/`theme` เป็น `null` จะกลับเป็นค่าเริ่มต้น |
+| GET | `/admin/orders`, `/admin/orders/:id` | S R V | filter: `eventId, status, q, from, to, page, pageSize` รายละเอียดมี `reviewedByName`, `canEditAddress`, `notes`, `timeline` เพิ่มท้าย |
 | POST | `/admin/orders/:id/cancel` | S R | ยกเลิก (คืนโควตา) |
 | PATCH | `/admin/orders/:id/tracking` | S R | เลขพัสดุ (เฉพาะออเดอร์จัดส่งที่ชำระแล้ว) |
+| PATCH | `/admin/orders/:id/address` | S R | แก้ที่อยู่จัดส่ง (เฉพาะออเดอร์จัดส่งสถานะ pending / slip_uploaded / rejected / paid ที่ยังไม่มีเลขพัสดุ; 409 `INVALID_STATE`, 422 `fields`) |
+| POST | `/admin/orders/:id/notes` | S R | `{ text }` 1-1000 ตัวอักษร บันทึกภายใน ตอบ 201 รายละเอียดออเดอร์ (422 `NOTE_LIMIT_REACHED` เมื่อครบ 100 รายการ) |
+| DELETE | `/admin/orders/:id/notes/:noteId` | S R | ลบบันทึก: super_admin ลบได้ทุกอัน reviewer ลบได้เฉพาะของตัวเอง (403, 404 `NOTE_NOT_FOUND`) |
 | GET | `/admin/slips?tab=waiting\|history&eventId=` | S R V | คิวสลิป (รอตรวจ เก่าสุดก่อน / ประวัติ) |
 | GET | `/admin/payments/:id/slip` | S R V | ไฟล์สลิป (ต้องมี cookie) |
 | POST | `/admin/orders/:id/approve` | S R | `{ transactionRef }` เลขอ้างอิงห้ามซ้ำกับออเดอร์ที่ชำระแล้ว |
 | POST | `/admin/orders/:id/reject` | S R | `{ reason }` จำเป็น |
 | GET | `/admin/participants` | S R V | filter: `eventId, q, race, status` เลขบัตรแสดงแบบ mask |
 | PATCH | `/admin/participants/:id` | S R | `{ collected?, bibNo? }` (BIB ไม่ซ้ำภายในงาน ตั้งได้เฉพาะออเดอร์ที่ชำระแล้ว) |
-| GET | `/admin/shipping?method=pickup\|shipping` | S R V | รายการจัดส่ง/รับของ (ออเดอร์ที่ชำระแล้ว) |
+| GET | `/admin/shipping?method=pickup\|shipping&q=` | S R V | รายการจัดส่ง/รับของ (ออเดอร์ที่ชำระแล้ว) `q` ค้นหาทุกหน้าจากชื่อผู้สมัคร เลข BIB เลขออเดอร์ ชื่อ/เบอร์ผู้ติดต่อ หรือเลขพัสดุ (ต้องใช้ MongoDB 5.0+) |
 | GET | `/admin/dashboard?eventId=` | S R V | สรุปจำนวนออเดอร์ รายได้ (เฉพาะ paid) โควตาแต่ละระยะ |
 | GET | `/admin/reports/summary`, `/admin/reports/shirt-sizes` | S R V | รายงานสรุป / ไซส์เสื้อ (`status` เริ่มต้น `paid`) |
-| GET | `/admin/export/orders.csv`, `participants.csv`, `fulfillment.csv` | S R V | CSV UTF-8 BOM ป้องกัน formula injection (ไม่มีเลขบัตรเต็ม) |
+| GET | `/admin/export/orders.csv`, `participants.csv`, `fulfillment.csv` | S R V | CSV UTF-8 BOM ป้องกัน formula injection (ไม่มีเลขบัตรเต็ม) `fulfillment.csv` รับ `q` เหมือนหน้าจัดส่ง |
+| GET | `/admin/export/overview.csv?eventId=`, `/admin/export/shirt-sizes.csv?eventId=&status=` | S R V | CSV ภาพรวม (ค่าเดียวกับ dashboard) / จำนวนเสื้อตามไซส์ |
+| GET | `/admin/audit-logs` | S | ประวัติการใช้งาน ใหม่สุดก่อน filter: `userId, action, entity, entityId, from, to, page, pageSize` |
 | GET | `/admin/events/:id/images` | S R V | รายการรูปของงาน (เรียงตาม `sortOrder`) |
 | POST | `/admin/events/:id/images` | S | อัปโหลดรูป `multipart/form-data`: `files` (1-10 ไฟล์) + `kind` + `alt` (ไม่บังคับ) ตอบ 201 `data: Image[]` (400 `UPLOAD_ERROR`, 404 `EVENT_NOT_FOUND`, 413 `FILE_TOO_LARGE`, 415 `UNSUPPORTED_FILE_TYPE`, 422 `TOO_MANY_FILES` / `IMAGE_LIMIT_REACHED` / `VALIDATION_ERROR`) |
 | PUT | `/admin/events/:id/images/order` | S | จัดลำดับใหม่ `{ ids: [...] }` ต้องครบทุกรูปของงาน (400, 401, 403, 404 `EVENT_NOT_FOUND`, 409 `IMAGE_ORDER_STALE`, 422) |
 | PATCH | `/admin/events/:id/images/:imageId` | S | แก้ `{ kind?, alt?, sortOrder? }` |
 | DELETE | `/admin/events/:id/images/:imageId` | S | ลบรูปและไฟล์ในดิสก์ ตอบ 200 `data: null` (ไฟล์หายไปแล้วก็ยังตอบ 200) |
 | GET | `/admin/events/:id/images/:imageId/file` | S R V | ไฟล์รูปสำหรับพรีวิวหลังบ้าน (ดูรูปของงาน draft ได้) ต้องมี cookie |
-| GET/POST/PATCH | `/admin/users`, `/admin/users/:id` | S | จัดการผู้ใช้ (ห้ามลดสิทธิ์/ปิดใช้งาน super_admin คนสุดท้าย) |
+| GET/POST/PATCH | `/admin/users`, `/admin/users/:id` | S | จัดการผู้ใช้ (ห้ามลดสิทธิ์/ปิดใช้งาน super_admin คนสุดท้าย) แก้ `email` ได้ (409 `EMAIL_TAKEN`) ผู้ใช้ใหม่/ถูกรีเซ็ตรหัสผ่านจะมี `mustChangePassword: true` ห้ามแก้บทบาท/ปิดใช้งานตัวเอง (409 `CANNOT_MODIFY_SELF`) |
+| DELETE | `/admin/users/:id` | S | ลบผู้ใช้ถาวร ต้องปิดใช้งานแล้วและไม่มีประวัติอ้างอิง ตอบ 200 `data: null` (409 `CANNOT_DELETE_SELF`, `USER_STILL_ACTIVE`, `USER_HAS_HISTORY`, `INVALID_STATE`) |
 
 ### รูปภาพงานวิ่ง (Event images)
 

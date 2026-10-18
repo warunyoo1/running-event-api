@@ -1,6 +1,12 @@
 import { z } from "zod";
-import { deliveryMethods, orderStatuses } from "../config/constants";
+import {
+  AUDIT_ENTITIES,
+  ORDER_NOTE_MAX,
+  deliveryMethods,
+  orderStatuses,
+} from "../config/constants";
 import { objectId, optStr, pageQuery } from "./common.validator";
+import { validateAddress } from "./order.validator";
 
 const emptyToUndef = (v: unknown) => (v === "" ? undefined : v);
 const optObjectId = z.preprocess(emptyToUndef, objectId.optional());
@@ -38,6 +44,35 @@ export const trackingBody = z.object({
   trackingNo: z.string().trim().min(1, "กรุณากรอกเลขพัสดุ").max(100),
 });
 export type TrackingBody = z.infer<typeof trackingBody>;
+
+export const noteBody = z.object({
+  text: z
+    .string({ required_error: "กรุณากรอกบันทึก" })
+    .trim()
+    .min(1, "กรุณากรอกบันทึก")
+    .max(ORDER_NOTE_MAX, `บันทึกยาวได้ไม่เกิน ${ORDER_NOTE_MAX} ตัวอักษร`),
+});
+export type NoteBody = z.infer<typeof noteBody>;
+
+export const noteParams = z.object({ id: objectId, noteId: objectId });
+export type NoteParams = z.infer<typeof noteParams>;
+
+// Same maxima as `deliveryShape`; the rules themselves come from `validateAddress` (shared with checkout).
+const addressPart = (max: number) =>
+  z.string({ required_error: "กรุณากรอกข้อมูล" }).max(max);
+export const addressBody = z
+  .object({
+    street: addressPart(300),
+    subdistrict: addressPart(100),
+    district: addressPart(100),
+    province: addressPart(100),
+    postalCode: addressPart(10),
+  })
+  .superRefine((v, ctx) => {
+    for (const [key, message] of Object.entries(validateAddress(v)))
+      ctx.addIssue({ code: "custom", path: [key], message });
+  });
+export type AddressBody = z.infer<typeof addressBody>;
 
 export const approveBody = z.object({
   transactionRef: z
@@ -84,11 +119,22 @@ export type PatchParticipantBody = z.infer<typeof patchParticipantBody>;
 
 export const shippingQuery = pageQuery.extend({
   eventId: optObjectId,
+  q: optStr,
   method: z.preprocess(emptyToUndef, z.enum(deliveryMethods).optional()),
 });
 export type ShippingQuery = z.infer<typeof shippingQuery>;
 export const exportShippingQuery = shippingQuery.omit(withoutPaging);
 export type ExportShippingQuery = z.infer<typeof exportShippingQuery>;
+
+export const auditLogsQuery = pageQuery.extend({
+  userId: optObjectId,
+  action: optStr,
+  entity: z.preprocess(emptyToUndef, z.enum(AUDIT_ENTITIES).optional()),
+  entityId: optObjectId,
+  from: optDate,
+  to: optDate,
+});
+export type AuditLogsQuery = z.infer<typeof auditLogsQuery>;
 
 export const dashboardQuery = z.object({ eventId: optObjectId });
 export type DashboardQuery = z.infer<typeof dashboardQuery>;

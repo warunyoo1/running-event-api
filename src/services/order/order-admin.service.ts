@@ -6,21 +6,30 @@ import { ApiError } from "../../utils/api-error";
 import { bangkokRange } from "../../utils/date-range";
 import { escapeRegex, pageMeta, skipOf } from "../../utils/pagination";
 import type {
+  AddressBody,
   AdminOrdersQuery,
   ExportOrdersQuery,
 } from "../../validators/admin.validator";
 import {
   toAdminOrderDetailView,
   toAdminOrderView,
-  type AdminOrderDetailView,
+  type AdminOrderFullDetailView,
   type AdminOrderView,
 } from "../../views/order.view";
 import { audit } from "../audit.service";
+import { loadDetailExtras } from "./order-detail.service";
+import { trimAddress } from "./order-address";
 import { transitionAndRelease } from "./order-quota";
-import { statusesBefore } from "./order-state";
+import { ADDRESS_EDITABLE, canEditAddress, statusesBefore } from "./order-state";
 
 const orderNotFound = () =>
   ApiError.notFound("ไม่พบออเดอร์", "ORDER_NOT_FOUND");
+
+const addressLocked = () =>
+  ApiError.conflict(
+    "INVALID_STATE",
+    "แก้ไขที่อยู่ได้เฉพาะออเดอร์จัดส่งที่ยังไม่ได้ใส่เลขพัสดุและยังไม่ถูกยกเลิก/หมดอายุ",
+  );
 
 /** Loads an order with only the `select`ed fields, or throws ORDER_NOT_FOUND. */
 export async function findOrderOr404(
@@ -86,7 +95,7 @@ export async function decorateOrders(
   );
 }
 
-export async function getAdmin(id: string): Promise<AdminOrderDetailView> {
+export async function getAdmin(id: string): Promise<AdminOrderFullDetailView> {
   const order = await Order.findById(id).lean();
   if (!order) throw orderNotFound();
   const [[decorated], participants, payments] = await Promise.all([
@@ -94,14 +103,15 @@ export async function getAdmin(id: string): Promise<AdminOrderDetailView> {
     Participant.find({ orderId: id }).sort({ _id: 1 }).lean(),
     Payment.find({ orderId: id }).sort({ createdAt: -1 }).lean(),
   ]);
-  return toAdminOrderDetailView(decorated, participants, payments);
+  const extras = await loadDetailExtras(order, payments);
+  return toAdminOrderDetailView(decorated, participants, payments, extras);
 }
 
 export async function cancel(
   actorId: string,
   id: string,
   reason?: string,
-): Promise<AdminOrderDetailView> {
+): Promise<AdminOrderFullDetailView> {
   await findOrderOr404(id, "status");
   const done = await transitionAndRelease(
     { _id: id, status: { $in: statusesBefore("cancelled") } },
@@ -122,7 +132,7 @@ export async function setTracking(
   id: string,
   provider: string,
   no: string,
-): Promise<AdminOrderDetailView> {
+): Promise<AdminOrderFullDetailView> {
   const order = await findOrderOr404(id, "status delivery");
   if (order.delivery !== "shipping")
     throw ApiError.conflict(
@@ -138,6 +148,32 @@ export async function setTracking(
     { _id: id },
     { $set: { trackingProvider: provider, trackingNo: no } },
   );
-  await audit(actorId, "order.tracking", "Order", id, { provider });
+  await audit(actorId, "order.tracking", "Order", id, {
+    provider,
+    trackingNo: no,
+  });
+  return getAdmin(id);
+}
+export async function updateAddress(
+  actorId: string,
+  id: string,
+  input: AddressBody,
+): Promise<AdminOrderFullDetailView> {
+  const order = await findOrderOr404(id, "status delivery trackingNo address");
+  if (!canEditAddress(order)) throw addressLocked();
+  const before = order.toObject().address ?? null;
+  const after = trimAddress(input);
+  // Guarded write: a concurrent tracking number, cancel or expiry makes this match nothing.
+  const res = await Order.updateOne(
+    {
+      _id: id,
+      delivery: "shipping",
+      status: { $in: [...ADDRESS_EDITABLE] },
+      trackingNo: null,
+    },
+    { $set: { address: after } },
+  );
+  if (res.matchedCount === 0) throw addressLocked();
+  await audit(actorId, "order.address.update", "Order", id, { before, after });
   return getAdmin(id);
 }

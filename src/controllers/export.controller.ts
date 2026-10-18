@@ -2,9 +2,11 @@ import type { Request, Response } from "express";
 import { validatedQuery } from "../middlewares/validate";
 import * as exportService from "../services/export.service";
 import type {
+  DashboardQuery,
   ExportOrdersQuery,
   ExportParticipantsQuery,
   ExportShippingQuery,
+  ShirtSizesQuery,
 } from "../validators/admin.validator";
 
 function sendCsv(res: Response, filename: string, csv: string) {
@@ -35,5 +37,19 @@ export async function fulfillment(_req: Request, res: Response) {
     res,
     "fulfillment.csv",
     await exportService.fulfillmentCsv(validatedQuery<ExportShippingQuery>(res)),
+  );
+}
+export async function overview(_req: Request, res: Response) {
+  sendCsv(
+    res,
+    "overview.csv",
+    await exportService.overviewCsv(validatedQuery<DashboardQuery>(res)),
+  );
+}
+export async function shirtSizes(_req: Request, res: Response) {
+  sendCsv(
+    res,
+    "shirt-sizes.csv",
+    await exportService.shirtSizesCsv(validatedQuery<ShirtSizesQuery>(res)),
   );
 }

@@ -94,7 +94,7 @@ async function activeOrderCounts(
 export async function listAdmin(
   q: AdminEventsQuery,
 ): Promise<{ data: AdminEventView[]; meta: PageMeta }> {
-  const filter: FilterQuery<EventDoc> = { archived: false };
+  const filter: FilterQuery<EventDoc> = { archived: q.archived };
   if (q.status) filter.status = q.status;
   if (q.q) filter.name = new RegExp(escapeRegex(q.q), "i");
   const [events, total] = await Promise.all([
@@ -121,7 +121,8 @@ export async function listAdmin(
 }
 
 export async function getAdmin(id: string): Promise<AdminEventView> {
-  const e = await EventModel.findOne({ _id: id, archived: false }).lean();
+  // Admin only: archived events are returned too (their view shows `archived: true`).
+  const e = await EventModel.findOne({ _id: id }).lean();
   if (!e) throw eventNotFound();
   const [races, counts] = await Promise.all([
     racesByEvent([e._id]),
