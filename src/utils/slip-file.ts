@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { env } from "../config/env";
 
@@ -80,6 +80,19 @@ export async function saveEventImage(
   await mkdir(path.dirname(full), { recursive: true });
   await writeFile(full, buf, { flag: "wx", mode: 0o640 });
   return filename;
+}
+
+/** Removes `UPLOAD_DIR/events/<eventId>` with all its files. Never throws: failures are logged, the DB is the truth. */
+export async function deleteEventImageDir(eventId: string): Promise<void> {
+  try {
+    if (!EVENT_ID.test(eventId)) throw new Error("Invalid event id");
+    const base = eventImagesBase();
+    const dir = path.resolve(base, eventId);
+    if (path.dirname(dir) !== base) throw new Error("Invalid event image dir");
+    await rm(dir, { recursive: true, force: true });
+  } catch (err) {
+    console.warn("event image dir delete failed", err);
+  }
 }
 
 /** Removes an event image file. A missing file is fine; other failures are logged, never thrown. */

@@ -7,11 +7,16 @@ import type { AdminEventView } from "../../views/event.view";
 import { audit } from "../audit.service";
 import { QUOTA_HOLDING } from "../order/order-state";
 import { eventNotFound } from "../service-errors";
+import { deleteEventImageDir } from "../../utils/slip-file";
+import {
+  createFields,
+  raceCreateFields,
+  raceRestoreOps,
+  raceUpdateOps,
+  splitEventFields,
+  toUpdate,
+} from "./event-fields";
 import { getAdmin } from "./event-read.service";
-function eventFields(body: EventBody) {
-  const { races: _races, ...fields } = body;
-  return fields;
-}
 
 const slugTaken = () => ApiError.conflict("SLUG_TAKEN", "slug นี้ถูกใช้แล้ว");
 
@@ -35,17 +40,10 @@ export async function create(
   ];
   try {
     await Race.create(
-      body.races.map((r, i) => ({
-        eventId,
-        name: r.name,
-        price: r.price,
-        quota: r.quota,
-        start: r.start,
-        sortOrder: i,
-      })),
+      body.races.map((r, i) => raceCreateFields(r, i, eventId)),
       { ordered: true },
     );
-    await EventModel.create({ ...eventFields(body), _id: eventId });
+    await EventModel.create({ ...createFields(body), _id: eventId });
   } catch (err) {
     await runUndo(undo);
     throw err;
@@ -127,21 +125,15 @@ async function updateRaces(
   }
   for (const [i, r] of races.entries()) {
     const m = matched[i];
-    const set = {
-      name: r.name,
-      price: r.price,
-      quota: r.quota,
-      start: r.start,
-      sortOrder: i,
-      active: true,
-    };
     if (!m) {
       const raceId = new Types.ObjectId();
       undo.push({
         label: `delete new race ${raceId}`,
         run: () => Race.deleteOne({ _id: raceId, reserved: 0 }),
       });
-      await Race.create([{ _id: raceId, eventId: id, ...set }]);
+      await Race.create([
+        { _id: raceId, ...raceCreateFields(r, i, id), active: true },
+      ]);
       continue;
     }
     // Snapshot for the inverse write (restoring is guarded so it can never push quota below reserved).
@@ -158,7 +150,7 @@ async function updateRaces(
       run: () =>
         Race.updateOne(
           { _id: m._id, reserved: { $lte: before.quota } },
-          { $set: before },
+          toUpdate(raceRestoreOps(before)),
         ),
     });
     // Changing price/name of a race that is in use is only allowed while nothing is reserved.
@@ -167,7 +159,7 @@ async function updateRaces(
     // The reserved filter keeps the rules atomic with the write.
     const res = await Race.updateOne(
       { _id: m._id, reserved: sensitive ? 0 : { $lte: r.quota } },
-      { $set: set },
+      toUpdate(raceUpdateOps(r, i)),
     );
     if (res.matchedCount === 0)
       throw sensitive
@@ -193,11 +185,102 @@ export async function update(
   const undo: Undo[] = [];
   try {
     await updateRaces(id, body.races, undo);
-    await EventModel.updateOne({ _id: id }, { $set: eventFields(body) });
+    await EventModel.updateOne({ _id: id }, toUpdate(splitEventFields(body)));
   } catch (err) {
     await runUndo(undo);
     throw err;
   }
   await audit(actorId, "event.update", "Event", id, { slug: body.slug });
   return getAdmin(id);
+}
+
+/** Sets the `archived` flag. Idempotent: repeating it returns the event unchanged (and writes no audit row). */
+async function setArchived(
+  actorId: string,
+  id: string,
+  archived: boolean,
+): Promise<AdminEventView> {
+  const changed = await EventModel.findOneAndUpdate(
+    { _id: id, archived: !archived },
+    { $set: { archived } },
+    { projection: { slug: 1 } },
+  ).lean();
+  if (!changed) {
+    if (!(await EventModel.exists({ _id: id }))) throw eventNotFound();
+  } else {
+    await audit(
+      actorId,
+      archived ? "event.archive" : "event.restore",
+      "Event",
+      id,
+      { slug: changed.slug },
+    );
+  }
+  return getAdmin(id);
+}
+
+export const archive = (actorId: string, id: string) =>
+  setArchived(actorId, id, true);
+
+export const restore = (actorId: string, id: string) =>
+  setArchived(actorId, id, false);
+
+/**
+ * Hard delete, only for an event without any order. No transaction (standalone MongoDB): the event
+ * document is the commit point, same as `create`.
+ * 1. Order pre-check BEFORE any write, so a refused delete never changes a live event.
+ * 2. Archive it (stops new checkouts, which filter `archived: false`).
+ * 3. Re-check orders (one created between 1 and 2) and reserved quota (a checkout in flight);
+ *    on failure the archive flag is reverted, only if this call set it.
+ * 4. Delete the races, then the event, then the image directory (best effort), then audit.
+ * If step 4 fails after the races are gone the event simply stays archived (hidden, safe) and the
+ * delete can be repeated: every step is idempotent.
+ * Residual risk: a checkout that loaded the event before step 2 and writes its order after step 3
+ * leaves an orphan order; `reserveQuota` fails once the races are deleted, which makes the window a
+ * few milliseconds and the checkout then undoes itself.
+ */
+export async function remove(actorId: string, id: string): Promise<void> {
+  const event = await EventModel.findOne({ _id: id }).lean();
+  if (!event) throw eventNotFound();
+
+  const hasOrders = () =>
+    ApiError.conflict(
+      "EVENT_HAS_ORDERS",
+      "งานนี้มีออเดอร์แล้ว ไม่สามารถลบถาวรได้ ให้เก็บถาวรแทน",
+    );
+  if (await Order.exists({ eventId: id })) throw hasOrders();
+
+  const flagged = await EventModel.updateOne(
+    { _id: id, archived: false },
+    { $set: { archived: true } },
+  );
+  const undo: Undo[] = [];
+  if (flagged.matchedCount > 0)
+    undo.push({
+      label: "unarchive event",
+      run: () =>
+        EventModel.updateOne({ _id: id, archived: true }, { $set: { archived: false } }),
+    });
+
+  if (await Order.exists({ eventId: id })) {
+    await runUndo(undo);
+    throw hasOrders();
+  }
+  if (await Race.exists({ eventId: id, reserved: { $gt: 0 } })) {
+    await runUndo(undo);
+    throw ApiError.conflict(
+      "EVENT_QUOTA_RESERVED",
+      "มีผู้กำลังจองที่นั่งอยู่ กรุณาลองใหม่ภายหลัง หรือเก็บถาวรแทน",
+    );
+  }
+
+  const races = await Race.deleteMany({ eventId: id, reserved: 0 });
+  await EventModel.deleteOne({ _id: id });
+  await deleteEventImageDir(id);
+  await audit(actorId, "event.delete", "Event", id, {
+    slug: event.slug,
+    name: event.name,
+    raceCount: races.deletedCount,
+    imageCount: event.images?.length ?? 0,
+  });
 }

@@ -1,5 +1,7 @@
 import { Schema, model, type InferSchemaType, type Types } from "mongoose";
 import {
+  DEFAULT_EVENT_CATEGORY,
+  DEFAULT_EVENT_THEME,
   EVENT_IMAGE_ALT_MAX,
   EVENT_IMAGE_MIMES,
   eventCategories,
@@ -31,8 +33,8 @@ const eventSchema = new Schema(
     date: { type: String, required: true }, // YYYY-MM-DD
     venue: { type: String, required: true },
     province: { type: String, default: "" },
-    category: { type: String, enum: eventCategories, default: "road" },
-    theme: { type: String, enum: eventThemes, default: "orange" },
+    category: { type: String, enum: eventCategories, default: DEFAULT_EVENT_CATEGORY },
+    theme: { type: String, enum: eventThemes, default: DEFAULT_EVENT_THEME },
     status: { type: String, enum: eventStatuses, default: "draft" },
     registrationEnds: { type: String }, // YYYY-MM-DD
     organizer: { type: String, default: "" },

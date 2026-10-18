@@ -1,9 +1,15 @@
+import { existsSync } from "node:fs";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import multer from "multer";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { eventImageKinds } from "../src/config/constants";
 import { resolveError } from "../src/middlewares/error-handler";
-import { detectImage, resolveEventImagePath } from "../src/utils/slip-file";
+import {
+  deleteEventImageDir,
+  detectImage,
+  resolveEventImagePath,
+} from "../src/utils/slip-file";
 import {
   eventBody,
   patchImageBody,
@@ -45,6 +51,42 @@ describe("resolveEventImagePath", () => {
     expect(() => resolveEventImagePath(EVENT_ID, FILE.replace("jpg", "svg"))).toThrow();
     expect(() => resolveEventImagePath("../slips", FILE)).toThrow();
     expect(() => resolveEventImagePath("abc", FILE)).toThrow();
+  });
+});
+
+describe("deleteEventImageDir", () => {
+  const dir = path.dirname(resolveEventImagePath(EVENT_ID, FILE));
+  // A sibling that an invalid id must never touch.
+  const sibling = path.join(path.dirname(dir), "keep-me");
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+    await rm(sibling, { recursive: true, force: true });
+    // vitest.config.mts points UPLOAD_DIR at ./uploads-unit-test (not gitignored): remove what we created.
+    const root = path.dirname(path.dirname(dir));
+    if (path.basename(root) === "uploads-unit-test")
+      await rm(root, { recursive: true, force: true });
+  });
+
+  it("removes the event directory with its files", async () => {
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, FILE), JPG);
+    await deleteEventImageDir(EVENT_ID);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it("does nothing for a missing directory", async () => {
+    await expect(deleteEventImageDir(EVENT_ID)).resolves.toBeUndefined();
+  });
+
+  it("never throws and deletes nothing for invalid ids", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await mkdir(sibling, { recursive: true });
+    await writeFile(path.join(sibling, "a.jpg"), JPG);
+    for (const bad of ["abc", "../slips", "..", "", "keep-me"])
+      await expect(deleteEventImageDir(bad)).resolves.toBeUndefined();
+    expect(existsSync(path.join(sibling, "a.jpg"))).toBe(true);
+    warn.mockRestore();
   });
 });
 

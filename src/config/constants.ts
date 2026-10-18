@@ -15,6 +15,9 @@ export const eventStatuses = ["draft", "open", "closed", "upcoming"] as const;
 export const PUBLIC_EVENT_STATUSES = ["open", "closed", "upcoming"] as const;
 export const eventCategories = ["road", "trail", "fun"] as const;
 export const eventThemes = ["orange", "green", "blue", "pink", "navy", "sand"] as const;
+/** Applied when an event has no category/theme (model default, views, and an explicit `null` clear). */
+export const DEFAULT_EVENT_CATEGORY: (typeof eventCategories)[number] = "road";
+export const DEFAULT_EVENT_THEME: (typeof eventThemes)[number] = "orange";
 export const deliveryMethods = ["pickup", "shipping"] as const;
 
 /** Event image kinds (keep in sync with the admin UI constants). */

@@ -28,7 +28,8 @@ const raceBody = z.object({
     .number()
     .int("โควตาต้องเป็นจำนวนเต็ม")
     .min(1, "โควตาต้องอย่างน้อย 1"),
-  start: z.string().regex(TIME_HHMM, "เวลาต้องเป็น HH:mm").optional(),
+  // `null` clears the start time.
+  start: z.string().regex(TIME_HHMM, "เวลาต้องเป็น HH:mm").nullish(),
 });
 
 export const eventBody = z
@@ -45,10 +46,11 @@ export const eventBody = z
     date: ymd,
     venue: z.string().trim().min(1, "กรุณากรอกสถานที่").max(300),
     province: z.string().max(100).optional(),
-    category: z.enum(eventCategories).optional(),
-    theme: z.enum(eventThemes).optional(),
+    // `null` on these three clears them (category/theme reset to the defaults, registrationEnds is unset).
+    category: z.enum(eventCategories).nullish(),
+    theme: z.enum(eventThemes).nullish(),
     status: z.enum(eventStatuses),
-    registrationEnds: ymd.optional(),
+    registrationEnds: ymd.nullish(),
     organizer: z.string().max(200).optional(),
     refundPolicy: z.string().max(2000).optional(),
     races: z.array(raceBody).min(1, "ต้องมีอย่างน้อย 1 ระยะ").max(10),
@@ -94,6 +96,14 @@ export const adminEventsQuery = pageQuery.extend({
   status: z.preprocess(
     (v) => (v === "" ? undefined : v),
     z.enum(eventStatuses).optional(),
+  ),
+  /** `true` lists archived events, `false` (default) the active ones. */
+  archived: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
   ),
 });
 export type AdminEventsQuery = z.infer<typeof adminEventsQuery>;
