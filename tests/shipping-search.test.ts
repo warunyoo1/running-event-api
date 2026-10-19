@@ -66,7 +66,7 @@ describe("shippingSearchPipeline", () => {
 
   it("restricts the lookup to paid orders and keeps eventId an ObjectId", () => {
     const [, lookup] = shippingSearchPipeline("x", base);
-    const inner = (lookup as { $lookup: { pipeline: { $match: typeof base }[] } })
+    const inner = (lookup as unknown as { $lookup: { pipeline: { $match: typeof base }[] } })
       .$lookup.pipeline[0].$match;
     expect(inner.status).toBe("paid");
     expect(inner.eventId).toBeInstanceOf(Types.ObjectId);
