@@ -42,7 +42,7 @@ type PublicOrderSource = Pick<
 export interface PublicOrderView {
   orderNo: string;
   event: Pick<EventLean, "slug" | "name" | "date" | "venue"> | null;
-  races: { race: string; size: string }[];
+  races: { race: string; size: string; identityReference?: string }[];
   amount: { subtotal: number; shipping: number; total: number };
   delivery: OrderLean["delivery"];
   status: OrderLean["status"];
@@ -130,7 +130,7 @@ export const toCreatedOrderView = (
 export const toPublicOrderView = (
   order: PublicOrderSource,
   event: Pick<EventLean, "slug" | "name" | "date" | "venue"> | null,
-  participants: readonly Pick<ParticipantLean, "raceName" | "size">[],
+  participants: readonly Pick<ParticipantLean, "raceName" | "size" | "identityReference">[],
   canUploadSlip: boolean,
 ): PublicOrderView => ({
   orderNo: order.orderNo,
@@ -142,7 +142,7 @@ export const toPublicOrderView = (
         venue: event.venue,
       }
     : null,
-  races: participants.map((p) => ({ race: p.raceName, size: p.size })),
+  races: participants.map((p) => ({ race: p.raceName, size: p.size, ...(p.identityReference ? { identityReference: p.identityReference } : {}) })),
   amount: {
     subtotal: order.subtotal,
     shipping: order.shippingFee,

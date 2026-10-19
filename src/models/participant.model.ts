@@ -15,6 +15,7 @@ const participantSchema = new Schema(
     nationality: { type: String, required: true },
     idNumberEnc: { type: String },
     idLast4: { type: String },
+    identityReference: { type: String },
     declineIdentity: { type: Boolean, default: false },
     email: { type: String },
     phone: { type: String, required: true },
@@ -33,6 +34,7 @@ const participantSchema = new Schema(
   },
   { timestamps: true },
 );
+participantSchema.index({ identityReference: 1 }, { unique: true, partialFilterExpression: { identityReference: { $type: "string" } } });
 participantSchema.index({ orderId: 1 });
 participantSchema.index({ eventId: 1, raceId: 1 });
 participantSchema.index(

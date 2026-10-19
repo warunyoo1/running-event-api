@@ -44,6 +44,7 @@ async function buildFilter(
         { firstName: re },
         { lastName: re },
         { bibNo: re },
+        { identityReference: re },
         { orderId: { $in: orderIds } },
       ],
     });

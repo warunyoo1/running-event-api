@@ -1,3 +1,4 @@
+import { createParticipantReference } from "../../utils/participant-reference";
 import { Types } from "mongoose";
 import { MS_PER_HOUR, PUBLIC_EVENT_STATUSES } from "../../config/constants";
 import { env } from "../../config/env";
@@ -52,6 +53,7 @@ function participantRecord(
     idNumberEnc: storeIdentity ? encryptText(identity) : undefined,
     idLast4: storeIdentity ? identity.slice(-4) : undefined,
     declineIdentity: p.declineIdentity,
+    ...(p.declineIdentity ? { identityReference: p.identityReference || createParticipantReference() } : {}),
     email: optionalText(p.email),
     phone: cleanPhone(p.phone),
     medical: optionalText(p.medical),

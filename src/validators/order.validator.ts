@@ -38,6 +38,7 @@ export const participantShape = z.object({
   nationality: str(60).default("ไทย"),
   identity: str(30),
   declineIdentity: z.boolean().default(false),
+  identityReference: z.union([z.literal(""), z.string().regex(/^RUN-(?:[2-9A-HJ-NP-Z]{10}|[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12})$/i).transform(value => value.toUpperCase())]).optional(),
   email: str(200),
   phone: str(30),
   medical: str(500),

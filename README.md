@@ -576,3 +576,9 @@ Event create/update also accepts optional `shirtPickupPoint` (trimmed text, maxi
 Optional `shirtPickupUrl` accepts an HTTP(S) map link up to 2048 characters. Omitted updates preserve it; an empty string clears it. The platform opens this link, or searches Google Maps using the pickup point and venue when absent.
 
 Race capacity: optional `unlimitedQuota: true` bypasses the capacity limit while still counting and releasing reservations. `quota` remains a positive integer for backward compatibility (admin sends 1 when unlimited); ignore quota/remaining as capacity limits when the flag is true. Responses include `unlimitedQuota: true` and the actual `reserved` count for unlimited races. Omitted updates preserve the previous mode; false restores the supplied finite quota. Capacity changes retain the existing restriction against changes after active orders exist.
+
+Participants with `declineIdentity: true` receive a server-generated `identityReference` (`RUN-` plus UUID), stored once with the participant. This is not a government ID. Identity fields remain absent. The reference is read-only, unique, searchable by admin participant search, included in participant CSV and authenticated public order lookup race entries. Existing participants are not backfilled.
+
+The platform may send `identityReference` as a RUN-prefixed UUID v4, generated when opting out. The API validates its format and keeps it only for opt-out participants; omitted values retain server generation. The unique database index rejects reused references.
+
+New runner references use `RUN-` followed by 10 cryptographically random letters/digits, excluding 0, 1, I, and O. Previously issued RUN-UUID references remain valid; stored references are not rewritten.

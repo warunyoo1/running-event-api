@@ -37,7 +37,7 @@ export async function findPublic(
   const [event, participants] = await Promise.all([
     EventModel.findById(order.eventId).lean(),
     Participant.find({ orderId: order._id })
-      .select("raceName size")
+      .select("raceName size identityReference")
       .sort({ _id: 1 })
       .lean(),
   ]);
