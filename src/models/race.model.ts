@@ -14,6 +14,7 @@ const raceSchema = new Schema(
     quota: { type: Number, required: true, min: 1, validate: integer },
     reserved: { type: Number, default: 0, min: 0 },
     start: { type: String, match: TIME_HHMM },
+    prizes: { type: [new Schema({ rank: { type: Number, required: true, min: 1, max: 100, validate: integer }, amount: { type: Number, required: true, min: 0, validate: integer }, trophy: { type: Boolean, default: false } }, { _id: false })], default: undefined },
     sortOrder: { type: Number, default: 0 },
     active: { type: Boolean, default: true },
   },

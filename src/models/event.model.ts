@@ -30,12 +30,17 @@ const eventSchema = new Schema(
     slug: { type: String, required: true, lowercase: true, trim: true },
     subtitle: { type: String, default: "" },
     description: { type: String, default: "" },
+    websiteUrl: { type: String, default: "", maxlength: 2048 },
+    locationUrl: { type: String, default: "", maxlength: 2048 },
+    contactPhones: { type: [String], default: undefined },
     date: { type: String, required: true }, // YYYY-MM-DD
     venue: { type: String, required: true },
+    startPoint: { type: String, default: "", maxlength: 300 },
     province: { type: String, default: "" },
     category: { type: String, enum: eventCategories, default: DEFAULT_EVENT_CATEGORY },
     theme: { type: String, enum: eventThemes, default: DEFAULT_EVENT_THEME },
     status: { type: String, enum: eventStatuses, default: "draft" },
+    registrationStarts: { type: String }, // YYYY-MM-DD, Bangkok calendar date
     registrationEnds: { type: String }, // YYYY-MM-DD
     organizer: { type: String, default: "" },
     refundPolicy: { type: String },

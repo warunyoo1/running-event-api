@@ -543,3 +543,26 @@ pending ──อัปโหลดสลิป──▶ slip_uploaded ──อ
 - ไม่ commit `.env`; อย่าเก็บรหัสผ่าน/คีย์ใน repo; ควรเปลี่ยนรหัสผ่าน super admin หลัง seed
 - หน้าบ้านที่เรียกด้วย cookie ต้องใช้ `credentials: "include"` และโดเมนต้องอยู่ใน `CORS_ORIGINS`
 
+
+### วันเปิดรับสมัคร
+Event create/update accepts optional registrationStarts as YYYY-MM-DD (Bangkok calendar date). Omitted on update preserves the stored date; null clears it. Opening must be on/before the event date and closing date when supplied. Public/admin event responses include it when set. Order creation before this date returns HTTP 409 REGISTRATION_NOT_OPEN, even if status is open. Existing events without the field retain prior behavior; this field does not automatically publish a draft or change status.
+
+
+### Per-race prizes
+Event create/update accepts races[].prizes: an optional list of {rank, amount}. Rank is an integer 1–100, unique within its race; amount is a nonnegative integer in THB. Ranks may repeat across different distances. Omitted prizes preserve an existing schedule on update; [] clears it. Returned event races include nonempty prizes sorted by rank. These are prize schedules, not recorded finisher results, and do not change registration prices or quotas.
+
+
+### Start point
+Event create/update accepts optional startPoint (trimmed text, maximum 300 characters). Omitted on update preserves the stored value; an empty string clears it. Public/admin event responses include the value when stored. This is the physical start location within the venue, separate from each race start time.
+
+
+Each prize also accepts trophy (optional boolean). true means this rank receives a trophy; false or an omitted value means no trophy. Event views return the trophy choice, defaulting older prizes to false. A trophy-only reward can use amount: 0.
+
+
+### Organizer contact phones
+Event create/update accepts optional contactPhones: up to 10 unique phone strings. Spaces, parentheses and hyphens are stripped; normalized numbers must have 7–15 digits with an optional leading +. Omitted on update preserves stored numbers; [] clears them. These are public organizer contact numbers included in event views, separate from private participant contacts.
+
+
+### Organizer links
+Event create/update supports optional websiteUrl (event information) and locationUrl (custom venue/map link), each maximum 2048 characters and absolute http/https only. Omitted on update preserves stored values; empty string clears them. The platform uses locationUrl when supplied, otherwise Google Maps search from the venue. websiteUrl is presented separately from the event description.
+

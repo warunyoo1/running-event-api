@@ -79,6 +79,9 @@ async function loadOpenEvent(slug: string) {
     status: { $in: [...PUBLIC_EVENT_STATUSES] },
   });
   if (!event) throw ApiError.notFound("ไม่พบงานวิ่ง", "EVENT_NOT_FOUND");
+  if (event.registrationStarts && event.registrationStarts > bangkokToday()) {
+    throw ApiError.conflict("REGISTRATION_NOT_OPEN", "ยังไม่ถึงวันเปิดรับสมัคร");
+  }
   if (
     event.status !== "open" ||
     (event.registrationEnds && event.registrationEnds < bangkokToday())

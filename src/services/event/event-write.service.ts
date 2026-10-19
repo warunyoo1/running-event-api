@@ -142,6 +142,7 @@ async function updateRaces(
       price: m.price,
       quota: m.quota,
       start: m.start,
+      prizes: m.prizes?.map(({ rank, amount, trophy }) => ({ rank, amount, trophy: trophy ?? false })),
       sortOrder: m.sortOrder,
       active: m.active,
     };
@@ -174,6 +175,12 @@ export async function update(
   body: EventBody,
 ): Promise<AdminEventView> {
   const event = await EventModel.findOne({ _id: id, archived: false });
+  if (event) {
+    const starts = body.registrationStarts === undefined ? event.registrationStarts : body.registrationStarts;
+    const ends = body.registrationEnds === undefined ? event.registrationEnds : body.registrationEnds;
+    if (starts && starts > body.date) throw ApiError.validation({ registrationStarts: "วันเปิดรับสมัครต้องไม่เกินวันที่จัดงาน" });
+    if (starts && ends && starts > ends) throw ApiError.validation({ registrationEnds: "วันปิดรับสมัครต้องไม่ก่อนวันเปิดรับสมัคร" });
+  }
   if (!event) throw eventNotFound();
   if (
     body.slug !== event.slug &&

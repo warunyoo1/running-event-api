@@ -125,14 +125,14 @@ describe("raceRestoreOps", () => {
   it("restores a previous start", () => {
     const { set, unset } = raceRestoreOps({ ...before, start: "05:30" });
     expect(set).toEqual({ ...before, start: "05:30" });
-    expect(unset).toEqual({});
+    expect(unset).toEqual({ prizes: "" });
   });
 
   it("removes a start that did not exist before", () => {
     for (const start of [undefined, null]) {
       const { set, unset } = raceRestoreOps({ ...before, start });
       expect("start" in set).toBe(false);
-      expect(unset).toEqual({ start: "" });
+      expect(unset).toEqual({ start: "", prizes: "" });
     }
   });
 });

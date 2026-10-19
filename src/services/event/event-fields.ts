@@ -26,7 +26,7 @@ export const toUpdate = ({ set, unset }: FieldOps) => ({
  * Event fields of an update (races excluded).
  * - `undefined`: skipped, the stored value stays.
  * - `category` / `theme` `null`: reset to the default (the key stays on the document).
- * - `registrationEnds` `null`: unset.
+ * - `registrationStarts` / `registrationEnds` `null`: unset.
  */
 export function splitEventFields(body: EventBody): FieldOps {
   const { races: _races, ...fields } = body;
@@ -63,6 +63,7 @@ export function raceCreateFields(
     quota: r.quota,
     sortOrder: index,
     ...(r.start ? { start: r.start } : {}),
+    ...(r.prizes !== undefined ? { prizes: r.prizes } : {}),
   };
 }
 
@@ -78,6 +79,7 @@ export function raceUpdateOps(r: RaceInput, index: number): FieldOps {
   const unset: Record<string, ""> = {};
   if (typeof r.start === "string") set.start = r.start;
   else if (r.start === null) unset.start = "";
+  if (r.prizes !== undefined) set.prizes = r.prizes;
   return { set, unset };
 }
 
@@ -88,14 +90,17 @@ export type RaceSnapshot = {
   start?: string | null;
   sortOrder: number;
   active: boolean;
+  prizes?: { rank: number; amount: number; trophy?: boolean }[];
 };
 
 /** Inverse of `raceUpdateOps`: restores the snapshot, removing a start that did not exist before. */
 export function raceRestoreOps(before: RaceSnapshot): FieldOps {
-  const { start, ...rest } = before;
+  const { start, prizes, ...rest } = before;
   const set: Record<string, unknown> = { ...rest };
   const unset: Record<string, ""> = {};
   if (typeof start === "string") set.start = start;
   else unset.start = "";
+  if (prizes !== undefined) set.prizes = prizes;
+  else unset.prizes = "";
   return { set, unset };
 }

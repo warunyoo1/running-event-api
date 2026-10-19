@@ -17,6 +17,25 @@ const parse = (patch: Record<string, unknown>) =>
   eventBody.safeParse({ ...valid, ...patch });
 
 describe("eventBody null clears", () => {
+  it("accepts optional web links and rejects unsafe or malformed protocols", () => {
+    for (const key of ["websiteUrl", "locationUrl"]) {
+      expect(parse({ [key]: "" }).success).toBe(true);
+      expect(parse({ [key]: " https://example.com/details?q=1 " }).data?.[key as "websiteUrl"]).toBe("https://example.com/details?q=1");
+      for (const value of ["invalid", "javascript:alert(1)", "data:text/html,test", "ftp://example.com", "//example.com"]) expect(parse({ [key]: value }).success).toBe(false);
+    }
+  });
+  it("accepts optional organizer phone lists, normalizes formatting, and rejects duplicates", () => {
+    expect(parse({}).data?.contactPhones).toBeUndefined();
+    expect(parse({ contactPhones: [] }).data?.contactPhones).toEqual([]);
+    expect(parse({ contactPhones: ["081-234-5678", "+66 (89) 123 4567"] }).data?.contactPhones).toEqual(["0812345678", "+66891234567"]);
+    for (const contactPhones of [["0812345678", "081-234-5678"], ["abc"], ["123"], ["1".repeat(16)], Array(11).fill("0812345678")]) expect(parse({ contactPhones }).success).toBe(false);
+  });
+  it("accepts optional start point, trims it, and permits clearing", () => {
+    expect(parse({}).data?.startPoint).toBeUndefined();
+    expect(parse({ startPoint: "  Main gate  " }).data?.startPoint).toBe("Main gate");
+    expect(parse({ startPoint: "" }).data?.startPoint).toBe("");
+    expect(parse({ startPoint: "x".repeat(301) }).success).toBe(false);
+  });
   it("accepts null for category, theme and registrationEnds", () => {
     for (const key of ["category", "theme", "registrationEnds"]) {
       const r = parse({ [key]: null });

@@ -7,6 +7,7 @@ export interface RaceView {
   quota: number;
   start: string | null;
   remaining: number;
+  prizes?: { rank: number; amount: number; trophy?: boolean }[];
 }
 
 /** Dashboard row: a race with its quota usage and the name of its event. */
@@ -31,6 +32,7 @@ export const toRaceView = (r: RaceLean): RaceView => ({
   quota: r.quota,
   start: r.start ?? null,
   remaining: remainingOf(r),
+  ...(r.prizes?.length ? { prizes: [...r.prizes].sort((a, b) => a.rank - b.rank).map(({ rank, amount, trophy }) => ({ rank, amount, trophy: trophy ?? false })) } : {}),
 });
 
 export const toRaceViews = (races: readonly RaceLean[]): RaceView[] =>
