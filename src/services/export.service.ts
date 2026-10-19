@@ -176,7 +176,7 @@ export function overviewRows(data: DashboardView): (string | number)[][] {
     ["สลิปรอตรวจ", data.pendingReview],
     ...data.races.map((race): (string | number)[] => [
       `${race.eventName} · ${race.name} (จอง/โควตา)`,
-      `${race.reserved}/${race.quota}`,
+      `${race.reserved}/${race.unlimitedQuota ? "ไม่จำกัด" : race.quota}`,
     ]),
   ];
 }

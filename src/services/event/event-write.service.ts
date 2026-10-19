@@ -93,7 +93,7 @@ async function updateRaces(
   if (hasOrders) {
     races.forEach((r, i) => {
       const m = matched[i];
-      if (m && m.active && (m.price !== r.price || m.quota !== r.quota))
+      if (m && m.active && (m.price !== r.price || m.quota !== r.quota || (r.unlimitedQuota !== undefined && Boolean(m.unlimitedQuota) !== r.unlimitedQuota)))
         throw locked("มีออเดอร์แล้ว ไม่สามารถแก้ราคาหรือโควตาของระยะได้");
       if (m && m.name !== r.name)
         throw locked("มีออเดอร์แล้ว ไม่สามารถเปลี่ยนชื่อระยะได้");
@@ -103,7 +103,7 @@ async function updateRaces(
   }
   races.forEach((r, i) => {
     const m = matched[i];
-    if (m && r.quota < m.reserved) throw quotaBelowReserved(i);
+    if (m && !(r.unlimitedQuota ?? m.unlimitedQuota) && r.quota < m.reserved) throw quotaBelowReserved(i);
   });
 
   // Deactivate removed races (only reachable when there are no active orders).
@@ -141,7 +141,10 @@ async function updateRaces(
       name: m.name,
       price: m.price,
       quota: m.quota,
+      unlimitedQuota: m.unlimitedQuota,
       start: m.start,
+      benefits: m.benefits ? [...m.benefits] : undefined,
+      extraDetails: m.extraDetails ?? undefined,
       prizes: m.prizes?.map(({ rank, amount, trophy }) => ({ rank, amount, trophy: trophy ?? false })),
       sortOrder: m.sortOrder,
       active: m.active,
@@ -150,7 +153,7 @@ async function updateRaces(
       label: `restore race ${m._id}`,
       run: () =>
         Race.updateOne(
-          { _id: m._id, reserved: { $lte: before.quota } },
+          { _id: m._id, ...(before.unlimitedQuota ? {} : { reserved: { $lte: before.quota } }) },
           toUpdate(raceRestoreOps(before)),
         ),
     });
@@ -159,7 +162,7 @@ async function updateRaces(
       before.active && (before.name !== r.name || before.price !== r.price);
     // The reserved filter keeps the rules atomic with the write.
     const res = await Race.updateOne(
-      { _id: m._id, reserved: sensitive ? 0 : { $lte: r.quota } },
+      { _id: m._id, ...(sensitive ? { reserved: 0 } : (r.unlimitedQuota ?? m.unlimitedQuota) ? {} : { reserved: { $lte: r.quota } }) },
       toUpdate(raceUpdateOps(r, i)),
     );
     if (res.matchedCount === 0)

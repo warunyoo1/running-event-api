@@ -566,3 +566,13 @@ Event create/update accepts optional contactPhones: up to 10 unique phone string
 ### Organizer links
 Event create/update supports optional websiteUrl (event information) and locationUrl (custom venue/map link), each maximum 2048 characters and absolute http/https only. Omitted on update preserves stored values; empty string clears them. The platform uses locationUrl when supplied, otherwise Google Maps search from the venue. websiteUrl is presented separately from the event description.
 
+
+### Per-distance inclusions
+Each race accepts optional benefits (up to 20 unique nonempty trimmed strings, each max 100 characters) and extraDetails (trimmed text, max 2000 characters). Omitted fields preserve stored data on update; [] and empty string clear them. Nonempty values are returned in public/admin race views and displayed on the platform under race fees. Race compensation restores both fields if an event update fails.
+
+
+Event create/update also accepts optional `shirtPickupPoint` (trimmed text, maximum 300 characters). Omitted updates preserve the stored value; an empty string clears it. Public/admin event responses include this shirt collection location.
+
+Optional `shirtPickupUrl` accepts an HTTP(S) map link up to 2048 characters. Omitted updates preserve it; an empty string clears it. The platform opens this link, or searches Google Maps using the pickup point and venue when absent.
+
+Race capacity: optional `unlimitedQuota: true` bypasses the capacity limit while still counting and releasing reservations. `quota` remains a positive integer for backward compatibility (admin sends 1 when unlimited); ignore quota/remaining as capacity limits when the flag is true. Responses include `unlimitedQuota: true` and the actual `reserved` count for unlimited races. Omitted updates preserve the previous mode; false restores the supplied finite quota. Capacity changes retain the existing restriction against changes after active orders exist.

@@ -125,14 +125,23 @@ describe("raceRestoreOps", () => {
   it("restores a previous start", () => {
     const { set, unset } = raceRestoreOps({ ...before, start: "05:30" });
     expect(set).toEqual({ ...before, start: "05:30" });
-    expect(unset).toEqual({ prizes: "" });
+    expect(unset).toEqual({ prizes: "", benefits: "", extraDetails: "", unlimitedQuota: "" });
   });
 
   it("removes a start that did not exist before", () => {
     for (const start of [undefined, null]) {
       const { set, unset } = raceRestoreOps({ ...before, start });
       expect("start" in set).toBe(false);
-      expect(unset).toEqual({ start: "", prizes: "" });
+      expect(unset).toEqual({ start: "", prizes: "", benefits: "", extraDetails: "", unlimitedQuota: "" });
     }
+  });
+});
+
+describe("unlimited race capacity", () => {
+  it("preserves omitted capacity mode and supports explicitly switching it off", () => {
+    expect(raceUpdateOps({ name: "5K", price: 0, quota: 100 }, 0).set).not.toHaveProperty("unlimitedQuota");
+    expect(raceUpdateOps({ name: "5K", price: 0, quota: 100, unlimitedQuota: false }, 0).set.unlimitedQuota).toBe(false);
+    expect(raceCreateFields({ name: "5K", price: 0, quota: 1, unlimitedQuota: true }, 0, "event").unlimitedQuota).toBe(true);
+    expect(raceRestoreOps({ name: "5K", price: 0, quota: 1, unlimitedQuota: true, active: true, sortOrder: 0 }).set.unlimitedQuota).toBe(true);
   });
 });

@@ -61,8 +61,11 @@ export function raceCreateFields(
     name: r.name,
     price: r.price,
     quota: r.quota,
+    ...(r.unlimitedQuota !== undefined ? { unlimitedQuota: r.unlimitedQuota } : {}),
     sortOrder: index,
     ...(r.start ? { start: r.start } : {}),
+    ...(r.benefits !== undefined ? { benefits: r.benefits } : {}),
+    ...(r.extraDetails !== undefined ? { extraDetails: r.extraDetails } : {}),
     ...(r.prizes !== undefined ? { prizes: r.prizes } : {}),
   };
 }
@@ -73,6 +76,7 @@ export function raceUpdateOps(r: RaceInput, index: number): FieldOps {
     name: r.name,
     price: r.price,
     quota: r.quota,
+    ...(r.unlimitedQuota !== undefined ? { unlimitedQuota: r.unlimitedQuota } : {}),
     sortOrder: index,
     active: true,
   };
@@ -80,6 +84,8 @@ export function raceUpdateOps(r: RaceInput, index: number): FieldOps {
   if (typeof r.start === "string") set.start = r.start;
   else if (r.start === null) unset.start = "";
   if (r.prizes !== undefined) set.prizes = r.prizes;
+  if (r.benefits !== undefined) set.benefits = r.benefits;
+  if (r.extraDetails !== undefined) set.extraDetails = r.extraDetails;
   return { set, unset };
 }
 
@@ -87,20 +93,29 @@ export type RaceSnapshot = {
   name: string;
   price: number;
   quota: number;
+  unlimitedQuota?: boolean;
   start?: string | null;
   sortOrder: number;
   active: boolean;
+  benefits?: string[];
+  extraDetails?: string;
   prizes?: { rank: number; amount: number; trophy?: boolean }[];
 };
 
 /** Inverse of `raceUpdateOps`: restores the snapshot, removing a start that did not exist before. */
 export function raceRestoreOps(before: RaceSnapshot): FieldOps {
-  const { start, prizes, ...rest } = before;
+  const { start, prizes, benefits, extraDetails, unlimitedQuota, ...rest } = before;
   const set: Record<string, unknown> = { ...rest };
   const unset: Record<string, ""> = {};
+  if (unlimitedQuota !== undefined) set.unlimitedQuota = unlimitedQuota;
+  else unset.unlimitedQuota = "";
   if (typeof start === "string") set.start = start;
   else unset.start = "";
   if (prizes !== undefined) set.prizes = prizes;
   else unset.prizes = "";
+  if (benefits !== undefined) set.benefits = benefits;
+  else unset.benefits = "";
+  if (extraDetails !== undefined) set.extraDetails = extraDetails;
+  else unset.extraDetails = "";
   return { set, unset };
 }

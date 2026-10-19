@@ -32,10 +32,12 @@ const eventSchema = new Schema(
     description: { type: String, default: "" },
     websiteUrl: { type: String, default: "", maxlength: 2048 },
     locationUrl: { type: String, default: "", maxlength: 2048 },
+    shirtPickupUrl: { type: String, default: "", maxlength: 2048 },
     contactPhones: { type: [String], default: undefined },
     date: { type: String, required: true }, // YYYY-MM-DD
     venue: { type: String, required: true },
     startPoint: { type: String, default: "", maxlength: 300 },
+    shirtPickupPoint: { type: String, default: "", maxlength: 300 },
     province: { type: String, default: "" },
     category: { type: String, enum: eventCategories, default: DEFAULT_EVENT_CATEGORY },
     theme: { type: String, enum: eventThemes, default: DEFAULT_EVENT_THEME },

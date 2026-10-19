@@ -3,6 +3,9 @@ import * as F from "../fixtures/view-fixtures";
 import { toRaceStatView, toRaceView, toRaceViews } from "../../src/views/race.view";
 
 describe("toRaceView", () => {
+  it("exposes unlimited capacity and actual bookings even beyond the stored quota", () => {
+    expect(toRaceView({ ...F.races[0], quota: 1, reserved: 500, unlimitedQuota: true })).toMatchObject({ unlimitedQuota: true, reserved: 500 });
+  });
   it("keeps the documented key order and shapes price/quota/start", () => {
     const v = toRaceView(F.races[0]);
     expect(Object.keys(v)).toEqual(["id", "name", "price", "quota", "start", "remaining"]);

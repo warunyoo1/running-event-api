@@ -17,8 +17,13 @@ const parse = (patch: Record<string, unknown>) =>
   eventBody.safeParse({ ...valid, ...patch });
 
 describe("eventBody null clears", () => {
+  it("accepts unlimited quota and keeps the flag optional for older callers", () => {
+    expect(parse({}).data?.races[0].unlimitedQuota).toBeUndefined();
+    expect(parse({ races: [{ name: "5K", price: 0, quota: 1, unlimitedQuota: true }] }).data?.races[0].unlimitedQuota).toBe(true);
+    expect(parse({ races: [{ name: "5K", price: 0, quota: 100, unlimitedQuota: "yes" }] }).success).toBe(false);
+  });
   it("accepts optional web links and rejects unsafe or malformed protocols", () => {
-    for (const key of ["websiteUrl", "locationUrl"]) {
+    for (const key of ["websiteUrl", "locationUrl", "shirtPickupUrl"]) {
       expect(parse({ [key]: "" }).success).toBe(true);
       expect(parse({ [key]: " https://example.com/details?q=1 " }).data?.[key as "websiteUrl"]).toBe("https://example.com/details?q=1");
       for (const value of ["invalid", "javascript:alert(1)", "data:text/html,test", "ftp://example.com", "//example.com"]) expect(parse({ [key]: value }).success).toBe(false);
@@ -35,6 +40,12 @@ describe("eventBody null clears", () => {
     expect(parse({ startPoint: "  Main gate  " }).data?.startPoint).toBe("Main gate");
     expect(parse({ startPoint: "" }).data?.startPoint).toBe("");
     expect(parse({ startPoint: "x".repeat(301) }).success).toBe(false);
+  });
+  it("accepts optional shirt pickup point, trims it, and permits clearing", () => {
+    expect(parse({}).data?.shirtPickupPoint).toBeUndefined();
+    expect(parse({ shirtPickupPoint: "  Main gate  " }).data?.shirtPickupPoint).toBe("Main gate");
+    expect(parse({ shirtPickupPoint: "" }).data?.shirtPickupPoint).toBe("");
+    expect(parse({ shirtPickupPoint: "x".repeat(301) }).success).toBe(false);
   });
   it("accepts null for category, theme and registrationEnds", () => {
     for (const key of ["category", "theme", "registrationEnds"]) {

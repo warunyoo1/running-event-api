@@ -5,7 +5,11 @@ export interface RaceView {
   name: string;
   price: number;
   quota: number;
+  unlimitedQuota?: boolean;
+  reserved?: number;
   start: string | null;
+  benefits?: string[];
+  extraDetails?: string;
   remaining: number;
   prizes?: { rank: number; amount: number; trophy?: boolean }[];
 }
@@ -18,6 +22,7 @@ export interface RaceStatView {
   name: string;
   price: number;
   quota: number;
+  unlimitedQuota?: boolean;
   reserved: number;
   remaining: number;
 }
@@ -30,7 +35,10 @@ export const toRaceView = (r: RaceLean): RaceView => ({
   name: r.name,
   price: r.price,
   quota: r.quota,
+  ...(r.unlimitedQuota ? { unlimitedQuota: true, reserved: r.reserved } : {}),
   start: r.start ?? null,
+  ...(r.benefits?.length ? { benefits: [...r.benefits] } : {}),
+  ...(r.extraDetails ? { extraDetails: r.extraDetails } : {}),
   remaining: remainingOf(r),
   ...(r.prizes?.length ? { prizes: [...r.prizes].sort((a, b) => a.rank - b.rank).map(({ rank, amount, trophy }) => ({ rank, amount, trophy: trophy ?? false })) } : {}),
 });
@@ -48,6 +56,7 @@ export const toRaceStatView = (
   name: r.name,
   price: r.price,
   quota: r.quota,
+  ...(r.unlimitedQuota ? { unlimitedQuota: true, reserved: r.reserved } : {}),
   reserved: r.reserved,
   remaining: remainingOf(r),
 });

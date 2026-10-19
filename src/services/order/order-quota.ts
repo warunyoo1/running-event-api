@@ -45,7 +45,7 @@ export async function reserveQuota(
         {
           _id: raceId,
           active: true,
-          $expr: { $lte: [{ $add: ["$reserved", n] }, "$quota"] },
+          $or: [{ unlimitedQuota: true }, { $expr: { $lte: [{ $add: ["$reserved", n] }, "$quota"] } }],
         },
         { $inc: { reserved: n } },
         { new: true },

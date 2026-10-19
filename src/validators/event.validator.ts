@@ -24,12 +24,15 @@ const raceBody = z.object({
   id: z.string().optional(),
   name: z.string().trim().min(1, "กรุณากรอกชื่อระยะ").max(50),
   price: z.number().int("ราคาต้องเป็นจำนวนเต็ม").min(0),
+  unlimitedQuota: z.boolean().optional(),
   quota: z
     .number()
     .int("โควตาต้องเป็นจำนวนเต็ม")
     .min(1, "โควตาต้องอย่างน้อย 1"),
   // `null` clears the start time.
   start: z.string().regex(TIME_HHMM, "เวลาต้องเป็น HH:mm").nullish(),
+  benefits: z.array(z.string().trim().min(1, "กรอกสิ่งที่ได้รับหรือลบรายการว่าง").max(100)).max(20).refine((values) => new Set(values).size === values.length, "สิ่งที่ได้รับซ้ำกัน").optional(),
+  extraDetails: z.string().trim().max(2000).optional(),
   prizes: z.array(z.object({ rank: z.number().int().min(1).max(100), amount: z.number().int("เงินรางวัลต้องเป็นจำนวนเต็มบาท").min(0).max(Number.MAX_SAFE_INTEGER), trophy: z.boolean().optional() })).max(100).optional().superRefine((prizes, ctx) => {
     const ranks = new Set<number>();
     prizes?.forEach((prize, index) => {
@@ -57,10 +60,12 @@ export const eventBody = z
     description: z.string().max(5000).optional(),
     websiteUrl: optionalWebLink,
     locationUrl: optionalWebLink,
+    shirtPickupUrl: optionalWebLink,
     contactPhones: z.array(z.string().trim().transform((phone) => phone.replace(/[ ()-]/g, "")).pipe(z.string().regex(/^\+?[0-9]{7,15}$/, "กรอกเบอร์โทร 7–15 หลัก หรือใช้รหัสประเทศนำหน้าด้วย +"))).max(10, "เพิ่มเบอร์โทรได้ไม่เกิน 10 เบอร์").refine((phones) => new Set(phones).size === phones.length, "เบอร์โทรซ้ำกัน").optional(),
     date: ymd,
     venue: z.string().trim().min(1, "กรุณากรอกสถานที่").max(300),
     startPoint: z.string().trim().max(300, "จุดปล่อยตัวยาวได้ไม่เกิน 300 ตัวอักษร").optional(),
+    shirtPickupPoint: z.string().trim().max(300, "จุดรับเสื้อยาวได้ไม่เกิน 300 ตัวอักษร").optional(),
     province: z.string().max(100).optional(),
     // `null` on these three clears them (category/theme reset to the defaults, registrationEnds is unset).
     category: z.enum(eventCategories).nullish(),
