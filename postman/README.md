@@ -3,7 +3,7 @@
 ## Import
 1. Postman > Import > เลือก `running-event-api.postman_collection.json` และ `local.postman_environment.json`
 2. เลือก environment **Running Event API - Local** (มุมขวาบน)
-3. แก้ค่าใน environment: `adminEmail` / `adminPassword` ให้ตรงกับ super admin ที่สร้างด้วย `npm run seed` (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` ใน `.env`) ค่าในไฟล์เป็น placeholder เท่านั้น
+3. แก้ค่าใน environment: `adminEmail` / `adminPassword` ให้ตรงกับ super admin ที่สร้างด้วย `npm run seed:admin` (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` ใน `.env`) ค่าในไฟล์เป็น placeholder เท่านั้น
 
 `baseUrl` เริ่มต้น `http://localhost:4000` (ตาม `PORT` ใน `.env.example`) path ทั้งหมดอยู่ใต้ `/api/v1` ยกเว้น `/health`
 

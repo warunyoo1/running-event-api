@@ -54,7 +54,7 @@ src/
     lean.ts              withId(): แปลงผล .lean() ให้ได้ { id, ...rest } แบบเดียวกับ toJSON
     collections.ts       groupBy()
     date-range.ts, pagination.ts, compensation.ts (runUndo), crypto.ts (AES-256-GCM), csv.ts, slip-file.ts ฯลฯ
-  seed/                  seed.ts + seed-data.ts
+  seed/                  seed-admin.ts (สร้าง super admin คนแรก ใช้ใน CI/CD) + ensure-admin.ts + admin-seed-rules.ts
 ```
 
 ทิศทาง dependency คือ `routes → controllers → services → models` service ห้าม import controller และ controller ห้ามแตะ model โดยตรง
@@ -114,8 +114,6 @@ routes → controllers → services → models (+ types) ──► views
 | `TRUST_PROXY` | | จำนวน reverse proxy ด้านหน้า (ใช้ caddy ตั้ง `1`) เพื่อให้ rate limit เห็น IP จริง |
 | `API_DOMAIN` | | โดเมนสำหรับ caddy (profile `proxy`) |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` / `SEED_ADMIN_NAME` | ใช้ตอน seed | super admin เริ่มต้น รหัสผ่านอย่างน้อย 10 ตัวอักษร ตั้งเอง ไม่มีค่า hardcode |
-| `SEED_MOCK_USERS` / `SEED_MOCK_USER_PASSWORD` | | `true` เพื่อสร้าง reviewer/viewer ตัวอย่าง ต้องตั้งรหัสผ่านอย่างน้อย 10 ตัวอักษร |
-| `SEED_ALLOW_PRODUCTION` | | production จะ seed เฉพาะ super admin ตั้ง `true` ถ้าต้องการข้อมูลตัวอย่างด้วย |
 
 สุ่มค่าความลับ:
 
@@ -131,7 +129,7 @@ MongoDB แบบ standalone ใช้ได้เลย ไม่ต้อง�
 ```bash
 npm install
 cp .env.example .env            # แล้วแก้ JWT_SECRET, ID_ENCRYPTION_KEY, SEED_ADMIN_PASSWORD
-npm run seed                    # events 6 งาน + super admin (+ ออเดอร์ตัวอย่างเมื่อไม่ใช่ production)
+npm run seed:admin              # สร้างเฉพาะ super admin คนแรก (ไม่มีข้อมูลตัวอย่าง ต้องสร้าง events ในแอป admin)
 npm run dev                     # http://localhost:4000/health
 ```
 
@@ -141,7 +139,9 @@ npm run dev                     # http://localhost:4000/health
 | `npm run typecheck` | `tsc --noEmit` ตรวจ type ทั้งโปรเจกต์ |
 | `npm run build` | compile ไป `dist/` (`tsconfig.build.json`) |
 | `npm start` | รัน `dist/server.js` (ต้อง build ก่อน) |
-| `npm run seed` | สร้าง/อัปเดต super admin และข้อมูลตัวอย่าง (รันซ้ำได้) |
+| `npm run seed:admin` | สร้างเฉพาะ super admin คนแรก (ข้ามถ้ามีอยู่แล้ว) ตัวเดียวกับที่ CI/CD รัน |
+
+หมายเหตุ: ระบบไม่มีข้อมูลตัวอย่าง/demo อีกต่อไป ต้องสร้าง events ในแอป admin เอง
 
 ก่อนเปิด PR ให้รัน `npm run typecheck && npm run build` (CI ก็รันสองคำสั่งนี้เหมือนกัน) โปรเจกต์ยังไม่มี test อัตโนมัติ
 
@@ -161,7 +161,7 @@ npm run dev                     # http://localhost:4000/health
 cp .env.example .env            # แก้ค่าที่จำเป็น, CORS_ORIGINS ให้ตรงกับหน้าบ้าน
 docker compose build
 docker compose up -d            # mongo (standalone) + api
-docker compose run --rm api node dist/seed/seed.js     # สร้าง super admin และข้อมูลเริ่มต้น
+docker compose run --rm api node dist/seed/seed-admin.js     # สร้าง super admin คนแรก
 docker compose ps               # รอให้ทั้งสอง service เป็น healthy
 ```
 
@@ -221,7 +221,7 @@ workflow: `.github/workflows/ci-cd.yml`
    cd /opt/running-event-api
    docker compose -f docker-compose.prod.yml pull api
    docker compose -f docker-compose.prod.yml --profile proxy up -d
-   docker compose -f docker-compose.prod.yml run --rm api node dist/seed/seed.js
+   docker compose -f docker-compose.prod.yml run --rm api node dist/seed/seed-admin.js
    ```
    รอบถัดไป workflow จะรัน `up -d` ให้ (service caddy ที่เปิดด้วย `--profile proxy` จะยังคงอยู่ ถ้าต้องการให้ workflow จัดการ caddy ด้วย ให้ตั้ง `COMPOSE_PROFILES=proxy` ใน `.env` บน server)
 
@@ -233,9 +233,30 @@ workflow: `.github/workflows/ci-cd.yml`
 | `JWT_SECRET` | สุ่มอย่างน้อย 32 ตัวอักษร |
 | `ID_ENCRYPTION_KEY` | base64 ของ 32 bytes (เปลี่ยนภายหลังไม่ได้) |
 | `CORS_ORIGINS` | origin ของหน้าบ้านและหลังบ้าน คั่นด้วย comma (ใช้ `https://`) |
-| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | super admin สำหรับ seed (รหัสผ่านอย่างน้อย 10 ตัวอักษร) |
+| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | super admin ที่ CI/CD สร้างให้ (seed-admin, รหัสผ่านอย่างน้อย 10 ตัวอักษร) |
 | `API_DOMAIN` | โดเมนของ API ที่ DNS ชี้มาที่ server (ใช้โดย caddy) |
 | `TRUST_PROXY` | `1` เมื่ออยู่หลัง caddy (`docker-compose.prod.yml` ใช้ `1` เป็นค่าเริ่มต้นอยู่แล้ว ตั้ง `0` ถ้าไม่ใช้ caddy) |
+
+### CI/CD seed เฉพาะ super admin
+
+หลัง deploy และ healthcheck ผ่าน workflow จะรัน `node dist/seed/seed-admin.js` ใน container (อ่าน `SEED_ADMIN_*` จาก `.env` บน server ผ่าน `env_file` ไม่ต้องเพิ่ม GitHub secret) สคริปต์นี้สร้างเฉพาะ super admin คนแรกเท่านั้น ไม่สร้าง events/orders/payments/mock users (ระบบไม่มีข้อมูลตัวอย่างอีกต่อไป ต้องสร้าง events ในแอป admin)
+
+กติกา (รันซ้ำได้ ไม่แก้ข้อมูลเดิม):
+- ไม่ตั้ง `SEED_ADMIN_EMAIL` หรือ `SEED_ADMIN_PASSWORD` → ข้าม (exit 0)
+- config ไม่ถูกต้อง (email ผิดรูปแบบ, รหัสผ่านสั้นกว่า 10 ตัว) → error (exit 1) โดยไม่แสดงรหัสผ่าน
+- มี user อีเมลนี้อยู่แล้ว → ข้าม ไม่แก้รหัสผ่าน/ชื่อ/role และไม่เปิดใช้งานใหม่
+- ไม่มีอีเมลนี้ แต่มี super admin ที่ active อยู่แล้ว → ข้าม (กันไม่ให้บัญชีเริ่มต้นกลับมาหลังลบ/เปลี่ยนอีเมล admin เดิม)
+- นอกนั้นสร้าง super admin (`mustChangePassword: true` ต้องเปลี่ยนรหัสผ่านหลัง login ครั้งแรก) รันพร้อมกันสองครั้งปลอดภัยเพราะอาศัย unique index ของอีเมล
+
+ถ้าสคริปต์ล้มเหลว workflow แค่แสดง `WARNING: seed-admin failed (deploy continues)` และ deploy ยังสำเร็จ
+
+ตั้งใน `.env` บน server (`SEED_ADMIN_NAME` ไม่บังคับ ค่าเริ่มต้น `Super Admin`) แนะนำให้เปลี่ยนรหัสผ่านหลัง login ครั้งแรก แล้วลบ `SEED_ADMIN_PASSWORD` ออกจาก `.env` ภายหลัง
+
+รันเองด้วยมือ:
+
+```bash
+docker compose -f docker-compose.prod.yml exec api node dist/seed/seed-admin.js
+```
 
 `MONGODB_URI`, `PORT` และ `UPLOAD_DIR` ถูกกำหนดใน `docker-compose.prod.yml` อยู่แล้ว ข้อมูล mongo และสลิปเก็บใน volume `mongo_data` และ `uploads`
 

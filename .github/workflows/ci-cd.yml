@@ -139,6 +139,10 @@ jobs:
             exit 1
           fi
 
+          # Seed only the first super_admin (idempotent). SEED_ADMIN_* come from the
+          # server .env via env_file. Non-fatal: the app is already healthy and live.
+          $COMPOSE exec -T api node dist/seed/seed-admin.js || echo "WARNING: seed-admin failed (deploy continues)"
+
           docker image prune -f
           echo "Deploy OK"
           REMOTE

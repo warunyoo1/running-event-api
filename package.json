@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "seed": "tsx src/seed/seed.ts",
+    "seed:admin": "tsx src/seed/seed-admin.ts",
     "test": "vitest run"
   },
   "license": "ISC",
