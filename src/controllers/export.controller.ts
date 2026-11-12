@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { validatedQuery } from "../middlewares/validate";
 import * as exportService from "../services/export.service";
+import * as exportXlsxService from "../services/export-xlsx.service";
 import type {
   DashboardQuery,
   ExportOrdersQuery,
@@ -52,4 +53,18 @@ export async function shirtSizes(_req: Request, res: Response) {
     "shirt-sizes.csv",
     await exportService.shirtSizesCsv(validatedQuery<ShirtSizesQuery>(res)),
   );
+}
+
+/** Registrations workbook: one row per participant, opens in Excel/Google Sheets. */
+export async function registrationsXlsx(_req: Request, res: Response) {
+  const buffer = await exportXlsxService.registrationsXlsx(
+    validatedQuery<ExportParticipantsQuery>(res),
+  );
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader("Content-Disposition", 'attachment; filename="registrations.xlsx"');
+  res.setHeader("Cache-Control", "private, no-store");
+  res.send(buffer);
 }

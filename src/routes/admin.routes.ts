@@ -258,6 +258,12 @@ adminRoutes.get(
   validate({ query: v.shirtSizesQuery }),
   exports_.shirtSizes,
 );
+adminRoutes.get(
+  "/export/registrations.xlsx",
+  read,
+  validate({ query: v.exportParticipantsQuery }),
+  exports_.registrationsXlsx,
+);
 
 // --- users ---
 adminRoutes.get("/users", superOnly, users.list);
